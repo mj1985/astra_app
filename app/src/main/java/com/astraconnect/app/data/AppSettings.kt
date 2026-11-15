@@ -67,6 +67,11 @@ class AppSettings(context: Context) {
                 .apply()
         }
 
+    /** Einträge der Leiste unten (Namen der Ziele, ohne die feste Startseite). null = Standard. */
+    var bottomBar: List<String>?
+        get() = prefs.getString("bottom_bar", null)?.split(',')?.filter { it.isNotBlank() }
+        set(v) = prefs.edit().putString("bottom_bar", v?.joinToString(",")).apply()
+
     /** Ordner (SAF-Baum-URI) für die automatische Sicherung, null = aus. */
     var backupTreeUri: String?
         get() = prefs.getString("backup_tree", null)
@@ -80,8 +85,10 @@ class AppSettings(context: Context) {
     fun toJson(): JSONObject = JSONObject()
         .put("price_fuel", prices.fuelPerLiter).put("price_power", prices.powerPerKwh).put("charge_loss", prices.chargeLossPct)
         .put("tank_l", tankLiters).put("capacity_kwh", capacityKwh)
+        .put("bottom_bar", bottomBar?.joinToString(",") ?: JSONObject.NULL)
 
     fun restore(o: JSONObject) {
+        o.str("bottom_bar")?.let { s -> bottomBar = s.split(',').filter { it.isNotBlank() } }
         prices = Prices(
             o.num("price_fuel") ?: prices.fuelPerLiter,
             o.num("price_power") ?: prices.powerPerKwh,

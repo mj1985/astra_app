@@ -20,6 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Euro
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -48,10 +51,10 @@ import com.astraconnect.app.ui.theme.Warn
 import java.time.Instant
 import java.util.Locale
 
-private fun parseNum(s: String) = s.replace(',', '.').trim().toDoubleOrNull()
+internal fun parseNum(s: String) = s.replace(',', '.').trim().toDoubleOrNull()
 
 @Composable
-private fun NumberField(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+internal fun NumberField(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
     OutlinedTextField(
         value = value, onValueChange = onChange, label = { Text(label) }, singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = modifier,
@@ -83,7 +86,8 @@ fun CostSettings(vm: AppViewModel) {
             parseNum(tank)?.let(vm::setTankLiters)
         }) { Text("Speichern") }
         Text(
-            "Ladeverluste: Aus der Steckdose kommt mehr Strom, als im Akku landet (typisch 8–15 %). " +
+            "Standardpreise: Benzin gilt bis zum ersten unter „Tanken“ eingetragenen Preis, Strom immer dann, wenn weder beim Ladevorgang noch beim Ort ein Preis hinterlegt ist. " +
+                "Ladeverluste: Aus der Steckdose kommt mehr Strom, als im Akku landet (typisch 8–15 %). " +
                 "Tankinhalt Astra Plug-in-Hybrid: 40 l – Grundlage für das Tankbuch.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -173,5 +177,34 @@ fun BackupSettings(vm: AppViewModel) {
             }
         }
         ui.backupInfo?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)) }
+    }
+}
+
+@Composable
+fun BottomBarSettings(vm: AppViewModel) {
+    val chosen = Dest.bottom(vm.ui.bottomBar)
+    SectionCard("Leiste unten", Icons.Filled.ViewWeek) {
+        Text(
+            "„Start“ ist immer links. Dazu bis zu ${Dest.MAX_BOTTOM} Einträge – in der Reihenfolge, in der du sie anhakst. " +
+                "Alles andere bleibt über das Menü ☰ erreichbar.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(4.dp))
+        Dest.entries.filter { it != Dest.OVERVIEW }.forEach { d ->
+            val on = d in chosen
+            val pos = chosen.indexOf(d)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Checkbox(
+                    checked = on,
+                    enabled = on || chosen.size < Dest.MAX_BOTTOM,
+                    onCheckedChange = { v -> vm.setBottomBar((if (v) chosen + d else chosen - d).map { it.name }) },
+                )
+                Icon(d.icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(12.dp))
+                Text(d.title, Modifier.weight(1f))
+                if (on) Text("${pos + 1}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            }
+        }
+        TextButton(onClick = { vm.setBottomBar(null) }) { Text("Standard wiederherstellen") }
     }
 }

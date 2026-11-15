@@ -164,6 +164,11 @@ object Stores {
     @Volatile private var trips: TripStore? = null
     @Volatile private var energy: EnergyLog? = null
     @Volatile private var places: PlaceBook? = null
+    @Volatile private var costs: CostBook? = null
+
+    fun costs(ctx: Context): CostBook = costs ?: synchronized(this) {
+        costs ?: CostBook(ctx.applicationContext).also { costs = it }
+    }
 
     fun places(ctx: Context): PlaceBook = places ?: synchronized(this) {
         places ?: PlaceBook(ctx.applicationContext).also { places = it }

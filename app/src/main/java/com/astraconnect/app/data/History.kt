@@ -58,17 +58,16 @@ object History {
     /** Fahrt rein elektrisch (true), mit Benzin (false) oder unbekannt (null). */
     fun isElectric(t: Trip): Boolean? = t.fuelLiters?.let { it < 0.05 }
 
-    /** Kosten einer Fahrt; null, wenn weder Kraftstoff noch Akku-Verbrauch bekannt ist. */
-    fun tripCost(t: Trip, b: BatteryUse?, prices: Prices): Double? {
-        val fuel = t.fuelLiters?.let { it * prices.fuelPerLiter }
-        val power = b?.kwh?.let { prices.electricCost(it) }
-        return if (fuel == null && power == null) null else (fuel ?: 0.0) + (power ?: 0.0)
-    }
+    /** Kosten einer Fahrt mit festen Preisen; null, wenn weder Kraftstoff noch Akku-Verbrauch bekannt ist. */
+    fun tripCost(t: Trip, b: BatteryUse?, prices: Prices): Double? = CostModel(prices).tripCost(t, b)
+
+    fun monthly(trips: List<Trip>, battery: Map<String, BatteryUse>, prices: Prices, zone: ZoneId = ZoneId.systemDefault()) =
+        monthly(trips, battery, CostModel(prices), zone)
 
     fun monthly(
         trips: List<Trip>,
         battery: Map<String, BatteryUse>,
-        prices: Prices,
+        costs: CostModel,
         zone: ZoneId = ZoneId.systemDefault(),
     ): List<MonthStats> = trips
         .filter { it.startedAt != null }
@@ -85,8 +84,8 @@ object History {
                 fuelLiters = list.sumOf { it.fuelLiters ?: 0.0 },
                 kmWithFuelData = km { it.fuelLiters != null },
                 kwh = list.sumOf { battery[it.key]?.kwh ?: 0.0 },
-                costFuel = list.sumOf { (it.fuelLiters ?: 0.0) * prices.fuelPerLiter },
-                costPower = list.sumOf { battery[it.key]?.kwh?.let(prices::electricCost) ?: 0.0 },
+                costFuel = list.sumOf { costs.fuelCost(it) ?: 0.0 },
+                costPower = list.sumOf { costs.powerCost(it, battery[it.key]) ?: 0.0 },
             )
         }
         .sortedBy { it.month }

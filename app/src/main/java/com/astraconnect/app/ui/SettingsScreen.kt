@@ -84,6 +84,7 @@ fun SettingsScreen(vm: AppViewModel) {
                 }
             }
         }
+        item { BottomBarSettings(vm) }
         item { CostSettings(vm) }
         item { NotificationSettings(vm) }
         item { BackupSettings(vm) }

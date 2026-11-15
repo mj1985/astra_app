@@ -11,7 +11,15 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** Ein benannter Ort, z. B. „Zuhause“ oder „Arbeit“. */
-data class Place(val id: String, val name: String, val lat: Double, val lon: Double, val radiusM: Double = 200.0) {
+data class Place(
+    val id: String,
+    val name: String,
+    val lat: Double,
+    val lon: Double,
+    val radiusM: Double = 200.0,
+    /** Strompreis beim Laden an diesem Ort (€/kWh aus dem Netz), null = Standardpreis. */
+    val powerPrice: Double? = null,
+) {
     val pos get() = LatLon(lat, lon)
 }
 
@@ -55,6 +63,7 @@ class PlaceBook(private val file: File) {
             lat = o.num("lat") ?: return@mapNotNull null,
             lon = o.num("lon") ?: return@mapNotNull null,
             radiusM = o.num("radius") ?: 200.0,
+            powerPrice = o.num("power"),
         )
     }
 
@@ -73,13 +82,16 @@ class PlaceBook(private val file: File) {
     fun savePlace(p: Place): Place {
         val o = read()
         val arr = JSONArray(o.arr("places").objects().filter { it.str("id") != p.id })
-        arr.put(JSONObject().put("id", p.id).put("name", p.name).put("lat", p.lat).put("lon", p.lon).put("radius", p.radiusM))
+        arr.put(
+            JSONObject().put("id", p.id).put("name", p.name).put("lat", p.lat).put("lon", p.lon).put("radius", p.radiusM)
+                .put("power", p.powerPrice ?: JSONObject.NULL)
+        )
         write(o.put("places", arr))
         return p
     }
 
-    fun addPlace(name: String, pos: LatLon, radiusM: Double = 200.0) =
-        savePlace(Place(UUID.randomUUID().toString(), name.trim(), pos.lat, pos.lon, radiusM))
+    fun addPlace(name: String, pos: LatLon, radiusM: Double = 200.0, powerPrice: Double? = null) =
+        savePlace(Place(UUID.randomUUID().toString(), name.trim(), pos.lat, pos.lon, radiusM, powerPrice))
 
     /** Löscht einen Ort samt aller Regeln, die ihn verwenden. */
     @Synchronized

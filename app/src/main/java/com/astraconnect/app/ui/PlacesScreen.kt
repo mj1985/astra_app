@@ -82,7 +82,7 @@ fun PlacesScreen(vm: AppViewModel) {
                     Row(Modifier.fillMaxWidth().clickable { draft = PlaceDraft(p, p.pos, null) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(p.name, fontWeight = FontWeight.SemiBold)
-                            Text("Radius ${p.radiusM.num(0, "m")} · $visits Fahrten", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Radius ${p.radiusM.num(0, "m")} · $visits Fahrten" + (p.powerPrice?.let { " · Strom ${it.num(3, "€/kWh")}" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { vm.deletePlace(p.id) }) { Icon(Icons.Filled.Delete, "Löschen") }
                     }
@@ -138,9 +138,9 @@ fun PlacesScreen(vm: AppViewModel) {
     }
 
     draft?.let { d ->
-        PlaceDialog(d, onDismiss = { draft = null }) { name, radius ->
-            if (d.existing != null) vm.updatePlace(d.existing.copy(name = name, radiusM = radius))
-            else vm.addPlace(name, d.pos, radius)
+        PlaceDialog(d, onDismiss = { draft = null }) { name, radius, power ->
+            if (d.existing != null) vm.updatePlace(d.existing.copy(name = name, radiusM = radius, powerPrice = power))
+            else vm.addPlace(name, d.pos, radius, power)
             draft = null
         }
     }
@@ -184,9 +184,10 @@ private fun RuleEditor(vm: AppViewModel) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PlaceDialog(d: PlaceDraft, onDismiss: () -> Unit, onSave: (String, Double) -> Unit) {
+private fun PlaceDialog(d: PlaceDraft, onDismiss: () -> Unit, onSave: (String, Double, Double?) -> Unit) {
     var name by remember { mutableStateOf(d.existing?.name.orEmpty()) }
     var radius by remember { mutableStateOf((d.existing?.radiusM ?: 200.0).toInt().toString()) }
+    var power by remember { mutableStateOf(d.existing?.powerPrice?.let { String.format(java.util.Locale.GERMANY, "%.3f", it) }.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (d.existing == null) "Ort benennen" else "Ort bearbeiten") },
@@ -203,11 +204,15 @@ private fun PlaceDialog(d: PlaceDraft, onDismiss: () -> Unit, onSave: (String, D
                     label = { Text("Radius (m)") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
-                Spacer(Modifier.width(4.dp))
+                NumberField("Strompreis beim Laden hier, €/kWh (optional)", power, { power = it })
+                Text(
+                    "Für die Ladeübersicht: Ladungen an diesem Ort werden mit diesem Preis berechnet. 0 = kostenlos (z. B. beim Arbeitgeber).",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(name.trim(), (radius.toDoubleOrNull() ?: 200.0).coerceIn(50.0, 2000.0)) }, enabled = name.isNotBlank()) {
+            TextButton(onClick = { onSave(name.trim(), (radius.toDoubleOrNull() ?: 200.0).coerceIn(50.0, 2000.0), parseNum(power)?.takeIf { it in 0.0..5.0 }) }, enabled = name.isNotBlank()) {
                 Text("Speichern")
             }
         },

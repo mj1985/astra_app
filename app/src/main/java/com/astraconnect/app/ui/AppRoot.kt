@@ -8,6 +8,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.EvStation
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -60,17 +64,31 @@ import androidx.compose.ui.unit.dp
 import com.astraconnect.app.AppViewModel
 import kotlinx.coroutines.launch
 
-enum class Dest(val title: String, val icon: ImageVector) {
-    OVERVIEW("Übersicht", Icons.Filled.Dashboard),
-    REMOTE("Fernsteuerung", Icons.Filled.SettingsRemote),
-    TRIPS("Fahrtenbuch", Icons.Filled.Route),
+enum class Dest(val title: String, val icon: ImageVector, val short: String = title) {
+    OVERVIEW("Übersicht", Icons.Filled.Dashboard, "Start"),
+    REMOTE("Fernsteuerung", Icons.Filled.SettingsRemote, "Steuern"),
+    TRIPS("Fahrtenbuch", Icons.Filled.Route, "Fahrten"),
+    CHARGING("Laden", Icons.Filled.EvStation),
+    FUEL("Tanken", Icons.Filled.LocalGasStation),
     STATS("Statistik", Icons.Filled.BarChart),
     MAP("Karte", Icons.Filled.Map),
-    PLACES("Orte & Regeln", Icons.Filled.Place),
-    DOORS("Türen & Fenster", Icons.Filled.MeetingRoom),
-    SERVICE("Wartung & 12V-Batterie", Icons.Filled.Build),
-    SETTINGS("Einstellungen", Icons.Filled.Settings),
-    RAW("API-Rohdaten", Icons.Filled.Code),
+    PLACES("Orte & Regeln", Icons.Filled.Place, "Orte"),
+    DOORS("Türen & Fenster", Icons.Filled.MeetingRoom, "Türen"),
+    SERVICE("Wartung & 12V-Batterie", Icons.Filled.Build, "Wartung"),
+    SETTINGS("Einstellungen", Icons.Filled.Settings, "Optionen"),
+    RAW("API-Rohdaten", Icons.Filled.Code, "Rohdaten"),
+    ;
+
+    companion object {
+        /** Höchstens so viele frei wählbare Einträge neben der festen Startseite (Material: 3–5 Ziele). */
+        const val MAX_BOTTOM = 4
+        val DEFAULT_BOTTOM = listOf(TRIPS, CHARGING, REMOTE, STATS)
+
+        /** Gewählte Einträge der Leiste unten (ohne Startseite). */
+        fun bottom(names: List<String>?): List<Dest> =
+            names?.mapNotNull { n -> entries.firstOrNull { it.name == n } }?.filter { it != OVERVIEW }?.distinct()?.take(MAX_BOTTOM)
+                ?: DEFAULT_BOTTOM
+    }
 }
 
 @Composable
@@ -156,6 +174,19 @@ private fun MainScreen(vm: AppViewModel) {
                     },
                 )
             },
+            bottomBar = {
+                val items = listOf(Dest.OVERVIEW) + Dest.bottom(ui.bottomBar)
+                NavigationBar {
+                    items.forEach { d ->
+                        NavigationBarItem(
+                            selected = d == dest,
+                            onClick = { dest = d },
+                            icon = { Icon(d.icon, null) },
+                            label = { Text(d.short, maxLines = 1) },
+                        )
+                    }
+                }
+            },
         ) { pad ->
             Box(Modifier.fillMaxSize().padding(pad)) {
                 when (dest) {
@@ -163,6 +194,8 @@ private fun MainScreen(vm: AppViewModel) {
                     Dest.REMOTE -> RemoteScreen(vm)
                     Dest.SETTINGS -> SettingsScreen(vm)
                     Dest.TRIPS -> TripLogScreen(vm)
+                    Dest.CHARGING -> ChargingScreen(vm)
+                    Dest.FUEL -> FuelScreen(vm)
                     Dest.STATS -> StatsScreen(vm)
                     Dest.MAP -> MapScreen(vm)
                     Dest.PLACES -> PlacesScreen(vm)

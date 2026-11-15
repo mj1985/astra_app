@@ -13,6 +13,11 @@ import androidx.lifecycle.viewModelScope
 import com.astraconnect.app.data.AppSettings
 import com.astraconnect.app.data.Backup
 import com.astraconnect.app.data.CategoryRule
+import com.astraconnect.app.data.ChargeEntry
+import com.astraconnect.app.data.ChargeRow
+import com.astraconnect.app.data.CostModel
+import com.astraconnect.app.data.FuelEntry
+import com.astraconnect.app.data.FuelRow
 import com.astraconnect.app.data.EnergySnapshot
 import com.astraconnect.app.data.History
 import com.astraconnect.app.data.Notifier
@@ -95,6 +100,11 @@ data class UiState(
     val backupInfo: String? = null,
     /** Ladestand-Messpunkte (für Diagramme und Ladehistorie). */
     val snapshots: List<EnergySnapshot> = emptyList(),
+    // Tank- und Ladekosten
+    val fuelEntries: List<FuelEntry> = emptyList(),
+    val chargeEntries: List<ChargeEntry> = emptyList(),
+    /** Leiste unten (Ziel-Namen), null = Standard. */
+    val bottomBar: List<String>? = null,
 ) {
     val vehicle: Vehicle? get() = vehicles.firstOrNull { it.id == selectedId } ?: vehicles.firstOrNull()
     val commandRunning: Boolean get() = commands.any { !it.final && Instant.now().epochSecond - it.sentAt.epochSecond < 180 }
@@ -119,6 +129,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val energyLog = Stores.energy(app)
     private val remote = RemoteControl(store, auth, http)
     private val placeBook = Stores.places(app)
+    private val costBook = Stores.costs(app)
     private val settings = AppSettings(app)
     private val backup = Backup(app)
     private val wakeups = ArrayDeque<Long>()
@@ -136,6 +147,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             notify = settings.notify,
             backupFolder = settings.backupTreeUri,
             lastBackup = settings.lastBackupAt,
+            fuelEntries = costBook.fuel(),
+            chargeEntries = costBook.charges(),
+            bottomBar = settings.bottomBar,
         )
     )
         private set
@@ -350,15 +364,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         recomputeBattery()
     }
 
-    fun tripCost(t: Trip): Double? = History.tripCost(t, ui.battery[t.key], ui.prices)
+    fun tripCost(t: Trip): Double? = costs.tripCost(t, ui.battery[t.key])
+
+    // ------------------------------------------------------------------ Tank- und Ladekosten
+
+    private var costCache: Pair<List<Any?>, Triple<List<ChargeRow>, List<FuelRow>, CostModel>>? = null
+
+    /** Ladeübersicht, Tankbuch und Preismodell – neu berechnet, sobald sich eine Grundlage ändert. */
+    private fun costData(): Triple<List<ChargeRow>, List<FuelRow>, CostModel> {
+        val u = ui
+        val key = listOf(u.trips, u.snapshots, u.places, u.prices, u.capacityKwh, u.tankLiters, u.fuelEntries, u.chargeEntries)
+        costCache?.let { (k, v) -> if (k.size == key.size && k.indices.all { k[it] === key[it] || k[it] == key[it] && k[it] !is List<*> }) return v }
+        val sessions = History.chargeSessions(u.snapshots, u.capacityKwh)
+        val charge = CostModel.chargeRows(sessions, u.chargeEntries, u.trips, u.places, u.prices)
+        val fuel = CostModel.fuelRows(History.refuels(u.trips, u.snapshots, u.tankLiters), u.fuelEntries)
+        val model = CostModel(u.prices, u.fuelEntries, charge)
+        return Triple(charge, fuel, model).also { costCache = key to it }
+    }
+
+    val chargeRows: List<ChargeRow> get() = costData().first
+    val fuelRows: List<FuelRow> get() = costData().second
+    val costs: CostModel get() = costData().third
+
+    /** Tankpreis zu einem Tankvorgang eintragen oder ändern. */
+    fun saveFuelEntry(e: FuelEntry) {
+        costBook.saveFuel(e)
+        ui = ui.copy(fuelEntries = costBook.fuel())
+    }
+
+    fun saveChargeEntry(e: ChargeEntry) {
+        costBook.saveCharge(e)
+        ui = ui.copy(chargeEntries = costBook.charges())
+    }
+
+    fun deleteCostEntry(id: String) {
+        costBook.delete(id)
+        ui = ui.copy(fuelEntries = costBook.fuel(), chargeEntries = costBook.charges())
+    }
+
+    fun setBottomBar(items: List<String>?) {
+        settings.bottomBar = items
+        ui = ui.copy(bottomBar = items)
+    }
 
     // ------------------------------------------------------------------ Orte & Regeln
 
     fun placeName(p: LatLon?): String? = PlaceBook.placeAt(ui.places, p)?.name
 
-    fun addPlace(name: String, pos: LatLon, radiusM: Double = 200.0) {
+    fun addPlace(name: String, pos: LatLon, radiusM: Double = 200.0, powerPrice: Double? = null) {
         if (name.isBlank()) return
-        placeBook.addPlace(name, pos, radiusM)
+        placeBook.addPlace(name, pos, radiusM, powerPrice)
         reloadPlaces()
     }
 
@@ -433,7 +488,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val r = withContext(Dispatchers.IO) { backup.readFrom(uri) }
             ui = ui.copy(
                 trips = tripStore.load(), prices = settings.prices, tankLiters = settings.tankLiters,
-                capacityKwh = settings.capacityKwh,
+                capacityKwh = settings.capacityKwh, fuelEntries = costBook.fuel(), chargeEntries = costBook.charges(),
+                bottomBar = settings.bottomBar,
             )
             reloadPlaces()
             recomputeBattery()

@@ -68,7 +68,8 @@ fun StatsScreen(vm: AppViewModel) {
     fun inRange(i: Instant?) = i != null && (from == null || !i.isBefore(from)) && (to == null || i.isBefore(to))
 
     val trips = ui.trips.filter { inRange(it.startedAt) }
-    val months = remember(trips, ui.battery, ui.prices) { History.monthly(trips, ui.battery, ui.prices) }
+    val costs = vm.costs
+    val months = remember(trips, ui.battery, costs) { History.monthly(trips, ui.battery, costs) }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -84,7 +85,7 @@ fun StatsScreen(vm: AppViewModel) {
                     FilterChip(selected = range == 0, onClick = { range = 0 }, label = { Text("Alles") })
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Übersicht", "Tanken & Laden", "Datenabgleich").forEachIndexed { i, t ->
+                    listOf("Übersicht", "Datenabgleich").forEachIndexed { i, t ->
                         FilterChip(selected = tab == i, onClick = { tab = i }, label = { Text(t) })
                     }
                 }
@@ -92,7 +93,6 @@ fun StatsScreen(vm: AppViewModel) {
         }
         when (tab) {
             0 -> overview(this, vm, months, trips)
-            1 -> energy(this, vm, from, to)
             else -> reconciliation(this, vm)
         }
     }
@@ -121,9 +121,8 @@ private fun overview(scope: androidx.compose.foundation.lazy.LazyListScope, vm: 
                 BigStat(if (km > 0) (cost / km * 100).eur() else "–", "pro 100 km", Modifier.weight(1f))
             }
             Text(
-                "Kosten = Benzin × ${ui.prices.fuelPerLiter.num(2, "€/l")} + berechneter Akku-Verbrauch × " +
-                    "${ui.prices.powerPerKwh.num(2, "€/kWh")} (+${ui.prices.chargeLossPct.num(0, "%")} Ladeverluste). " +
-                    "Preise in den Einstellungen.",
+                "Kosten = Benzin × Literpreis des letzten Tankvorgangs davor + berechneter Akku-Verbrauch × Preis der letzten Ladung davor. " +
+                    "Ohne Eintrag gelten die Standardpreise (${ui.prices.fuelPerLiter.num(2, "€/l")}, ${ui.prices.powerPerKwh.num(2, "€/kWh")} + ${ui.prices.chargeLossPct.num(0, "%")} Ladeverluste).",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
@@ -213,67 +212,6 @@ private fun TableRow(cells: List<String>, header: Boolean = false) {
                 fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (header) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 textAlign = if (i == 0) TextAlign.Start else TextAlign.End,
-            )
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------------- Tanken & Laden
-
-private fun energy(scope: androidx.compose.foundation.lazy.LazyListScope, vm: AppViewModel, from: Instant?, to: Instant?) = with(scope) {
-    val ui = vm.ui
-    fun inRange(i: Instant) = (from == null || !i.isBefore(from)) && (to == null || i.isBefore(to))
-    val sessions = History.chargeSessions(ui.snapshots, ui.capacityKwh).filter { inRange(it.start) }
-    val refuels = History.refuels(vm.ui.trips, ui.snapshots, ui.tankLiters).filter { inRange(it.at) }
-
-    item {
-        SectionCard("Ladestand der letzten 7 Tage", Icons.Filled.BatteryChargingFull) {
-            val since = Instant.now().minus(7, ChronoUnit.DAYS)
-            TimeLineChart(
-                ui.snapshots.filter { it.at.isAfter(since) && it.soc != null }.map { it.at to it.soc!! },
-                ChartColors.electric, "%",
-            )
-        }
-    }
-    item {
-        SectionCard("Ladevorgänge", Icons.Filled.BatteryChargingFull) {
-            if (sessions.isEmpty()) {
-                Text("Keine Ladevorgänge erkannt. Erkennung über die Ladestand-Messpunkte (Hintergrund-Aufzeichnung).",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                val kwh = sessions.sumOf { it.kwh }
-                InfoRow("${sessions.size} Ladevorgänge", "${kwh.num(1, "kWh")} · ≈ ${ui.prices.electricCost(kwh).eur()}")
-                HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                sessions.take(40).forEach { s ->
-                    InfoRow(
-                        s.start.dateTime() + if (s.ongoing) " (läuft)" else "",
-                        "${s.socFrom.pct()} → ${s.socTo.pct()} · +${s.kwh.num(1, "kWh")} · ${s.duration.pretty()}",
-                    )
-                }
-            }
-        }
-    }
-    item {
-        SectionCard("Tankvorgänge", Icons.Filled.LocalGasStation) {
-            if (refuels.isEmpty()) {
-                Text("Keine Tankvorgänge erkannt. Erkennung über den Tankstand (Messpunkte bzw. myOpel-Import).",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                val liters = refuels.sumOf { it.liters }
-                InfoRow("${refuels.size} Tankvorgänge", "≈ ${liters.num(0, "l")} · ≈ ${(liters * ui.prices.fuelPerLiter).eur()}")
-                HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                refuels.take(40).forEach { r ->
-                    InfoRow(
-                        r.at.dateLong() + if (r.fromMyop) " ¹" else "",
-                        "${r.levelFrom.pct()} → ${r.levelTo.pct()} · ≈ ${r.liters.num(0, "l")}" + (r.mileage?.let { " · ${it.km()}" } ?: ""),
-                    )
-                }
-            }
-            Text(
-                "Getankte Menge geschätzt aus dem Tankstand × ${ui.tankLiters.num(0, "l")} Tankinhalt (Einstellungen). " +
-                    "¹ aus dem myOpel-Export: Tankstand erst nach der folgenden Fahrt bekannt, Menge daher eher zu niedrig.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }

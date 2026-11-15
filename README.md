@@ -21,9 +21,14 @@ Stellantis Connected-Car-API v4 – dieselbe Schnittstelle, die auch die MyOpel-
 - **Fahrten zusammenführen/trennen:** Umparken oder kurze Zwischenstopps an die vorherige Fahrt anhängen
 - **Orte & Regeln:** häufige Orte benennen („Zuhause“, „Arbeit“), Regeln wie „Zuhause ↔ Arbeit = Arbeitsweg“;
   neue Fahrten werden automatisch zugeordnet (von Hand gesetzte Kategorien bleiben unangetastet)
-- **Kosten:** Benzin- und Strompreis (inkl. Ladeverluste) → Kosten pro Fahrt, Monat und Kategorie
+- **Leiste unten:** Startseite plus bis zu 4 frei wählbare Bereiche (Einstellungen → Leiste unten)
+- **Tanken:** Tankbuch mit erkannten Tankvorgängen; Literpreis nach dem Tanken eintragen – gilt für alle folgenden Fahrten
+- **Laden:** Ladeübersicht mit Kosten pro Ladevorgang, Monat und Ort; Strompreis pro Ort (z. B. Arbeit = 0 €),
+  Betrag oder €/kWh pro Ladung korrigierbar, Ladungen an öffentlichen Säulen nachtragen
+- **Kosten:** pro Fahrt, Monat und Kategorie – Benzin zum zuletzt getankten Preis, Strom zum Preis der letzten Ladung;
+  ohne Eintrag gelten die Standardpreise (inkl. Ladeverluste)
 - **Statistik:** km pro Monat (rein elektrisch / mit Benzin), Ø Benzinverbrauch, Kosten, Monatstabelle,
-  Ladestand-Kurve der letzten 7 Tage, Lade- und Tankhistorie, Datenabgleich API ↔ myOpel (Einheiten-Check)
+  Datenabgleich API ↔ myOpel (Einheiten-Check)
 - **Karte:** Fahrten (Start → Ziel) und Häufigkeitskarte auf OpenStreetMap; Mini-Karte pro Fahrt
 - **Benachrichtigungen:** Laden fertig/abgebrochen, Auto nachts offen, 12-V-Batterie schwach, Wartung fällig,
   Anmeldung abgelaufen

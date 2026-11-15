@@ -10,7 +10,7 @@ import java.time.Instant
 import java.time.YearMonth
 
 data class RestoreResult(val trips: Int, val snapshots: Int) {
-    val summary get() = "$trips Fahrt(en) übernommen/ergänzt, $snapshots Messpunkt(e) ergänzt. Orte, Regeln und Einstellungen eingespielt."
+    val summary get() = "$trips Fahrt(en) übernommen/ergänzt, $snapshots Messpunkt(e) ergänzt. Orte, Regeln, Tank-/Ladekosten und Einstellungen eingespielt."
 }
 
 /**
@@ -27,6 +27,7 @@ class Backup(private val ctx: Context) {
         .put("createdAt", Instant.now().toString())
         .put("trips", Stores.trips(ctx).rawEntries())
         .put("places", Stores.places(ctx).toJson())
+        .put("costs", Stores.costs(ctx).toJson())
         .put("energy", Stores.energy(ctx).exportJson())
         .put("settings", settings.toJson())
         .toString()
@@ -36,6 +37,7 @@ class Backup(private val ctx: Context) {
         if (o == null || o.optString("format") != FORMAT) throw IllegalArgumentException("Die Datei ist keine Astra-Connect-Sicherung.")
         val trips = Stores.trips(ctx).restore(o.optJSONArray("trips") ?: JSONArray())
         o.optJSONObject("places")?.let { Stores.places(ctx).restore(it) }
+        o.optJSONObject("costs")?.let { Stores.costs(ctx).restore(it) }
         val snaps = Stores.energy(ctx).restore(o.optJSONArray("energy") ?: JSONArray())
         o.optJSONObject("settings")?.let(settings::restore)
         return RestoreResult(trips, snaps)
