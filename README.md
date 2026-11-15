@@ -1,0 +1,54 @@
+# Astra Connect
+
+Android-App (Kotlin, Jetpack Compose) für den Opel Astra Plug-in-Hybrid (2022) über die
+Stellantis Connected-Car-API v4 – dieselbe Schnittstelle, die auch die MyOpel-App nutzt.
+
+## Funktionen
+
+- **Übersicht:** Verriegelung, Türen/Fenster auf einen Blick, Akku- und Tankstand, Reichweiten,
+  Kilometerstand, Ladestatus, Zündung, Außentemperatur, Vorklimatisierung, Warnungen, letzter Standort
+- **Fahrtenbuch:** Fahrten aus „My Trip Report“ abrufen und lokal speichern, Kategorie
+  (Privat / Dienstlich / Arbeitsweg) und Zweck/Notiz pro Fahrt, Adressen per Geocoder,
+  Filter nach Jahr/Kategorie, CSV-Export (Excel-kompatibel, Semikolon)
+- **Türen & Fenster:** Status jeder Tür, Kofferraum, Zentralverriegelung, Fenster (sofern geliefert)
+- **Wartung & 12V-Batterie:** Tage/km bis zur Wartung inkl. Fälligkeitsdatum, 12V-Ladezustand mit Bewertung
+- **Fernsteuerung:** Verriegeln/Entriegeln, Vorklimatisierung an/aus, Laden starten/pausieren, Hupe, Lichtsignal,
+  Fahrzeug aufwecken (frischer Status) – mit Rückmeldung vom Auto
+- **Akku-Verbrauch pro Fahrt (berechnet):** Ladestand vor/nach der Fahrt × nutzbare Kapazität (einstellbar,
+  Standard 10,2 kWh); der Ladestand wird dafür alle 15 Min. im Hintergrund aufgezeichnet
+- **API-Rohdaten:** die unveränderten JSON-Antworten zum Nachsehen/Kopieren
+
+## Login
+
+1. App starten → „API-Zugang & manueller Login“ aufklappen.
+2. Client-ID ist vorbelegt (MyOpel, DE). Das **Client-Secret** der MyOpel-App eintragen
+   (z. B. aus `configs.json` des Projekts *homeassistant-stellantis-vehicles*, Eintrag `MyOpel` → `DE`).
+3. „Mit MyOpel anmelden“ → Login auf der Opel-Seite. Die App fängt den Redirect
+   `mymopsdk://oauth2redirect/de?code=…` ab und tauscht den Code gegen Tokens.
+4. Falls die Anmeldeseite in der App nicht funktioniert (z. B. Captcha): Anmelde-Link kopieren,
+   im PC-Browser mit Entwicklertools öffnen, nach dem Login den `code` aus der Redirect-URL
+   in das Feld „Code“ einfügen.
+
+Tokens und Secret liegen mit einem Android-Keystore-Schlüssel verschlüsselt auf dem Gerät.
+Das Passwort speichert die App nicht.
+
+## Bauen & Installieren
+
+```
+gradlew.bat assembleDebug
+```
+
+APK: `app/build/outputs/apk/debug/app-debug.apk` – aufs Handy kopieren und installieren
+(„Installation aus unbekannten Quellen“ erlauben) oder per `adb install`.
+Alternativ das Projekt in Android Studio öffnen und auf ▶ drücken.
+
+## Grenzen
+
+- Die API liefert den zuletzt vom Auto gemeldeten Stand. Für frische Daten: Fernsteuerung → „Status holen“.
+- Fensterstatus wird von vielen Astra-Modellen nicht an die API übertragen – dann zeigt die App einen Hinweis.
+- Die Felder der Fahrten sind nicht offiziell dokumentiert; die App liest mehrere mögliche Feldnamen.
+  Fehlt etwas, hilft der Bildschirm „API-Rohdaten“ bzw. „Rohdaten anzeigen“ bei einer Fahrt.
+- Fernsteuerung: einmalige Freischaltung per SMS-Code + MyOpel-PIN (Menü „Fernsteuerung“). Opel erlaubt nur
+  wenige neue Sicherheitscodes pro Tag; das Token wird 3 Tage lang automatisch erneuert.
+- Akku-Verbrauch: nur für Fahrten nach Beginn der Aufzeichnung. Liegen mehrere Fahrten zwischen zwei
+  Messpunkten, wird nach Strecke aufgeteilt (≈); wurde dazwischen geladen, ist keine Berechnung möglich.
