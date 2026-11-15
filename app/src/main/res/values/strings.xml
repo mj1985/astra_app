@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Astra Connect</string>
+    <string name="widget_description">Ladestand, Reichweite und Verriegelung – mit Taste zum Verriegeln</string>
 </resources>

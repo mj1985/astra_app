@@ -10,6 +10,17 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.astraconnect.app.data.AppSettings
+import com.astraconnect.app.data.Backup
+import com.astraconnect.app.data.CategoryRule
+import com.astraconnect.app.data.EnergySnapshot
+import com.astraconnect.app.data.History
+import com.astraconnect.app.data.Notifier
+import com.astraconnect.app.data.NotifyPrefs
+import com.astraconnect.app.data.Place
+import com.astraconnect.app.data.PlaceBook
+import com.astraconnect.app.data.Prices
+import com.astraconnect.app.widget.StatusWidget
 import com.astraconnect.app.data.AuthExpiredException
 import com.astraconnect.app.data.AuthRepository
 import com.astraconnect.app.data.BatteryUse
@@ -72,6 +83,18 @@ data class UiState(
     val remoteBusy: Boolean = false,
     val remoteInfo: String? = null,
     val commands: List<CommandEntry> = emptyList(),
+    // Orte & Regeln
+    val places: List<Place> = emptyList(),
+    val rules: List<CategoryRule> = emptyList(),
+    // Kosten, Tank, Benachrichtigungen, Sicherung
+    val prices: Prices = Prices(1.75, 0.35, 10.0),
+    val tankLiters: Double = 40.0,
+    val notify: NotifyPrefs = NotifyPrefs(),
+    val backupFolder: String? = null,
+    val lastBackup: Long = 0L,
+    val backupInfo: String? = null,
+    /** Ladestand-Messpunkte (für Diagramme und Ladehistorie). */
+    val snapshots: List<EnergySnapshot> = emptyList(),
 ) {
     val vehicle: Vehicle? get() = vehicles.firstOrNull { it.id == selectedId } ?: vehicles.firstOrNull()
     val commandRunning: Boolean get() = commands.any { !it.final && Instant.now().epochSecond - it.sentAt.epochSecond < 180 }
@@ -95,6 +118,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val tripStore = Stores.trips(app)
     private val energyLog = Stores.energy(app)
     private val remote = RemoteControl(store, auth, http)
+    private val placeBook = Stores.places(app)
+    private val settings = AppSettings(app)
+    private val backup = Backup(app)
     private val wakeups = ArrayDeque<Long>()
 
     var ui by mutableStateOf(
@@ -103,11 +129,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             capacityKwh = prefs.getFloat("capacity_kwh", UiState.DEFAULT_CAPACITY.toFloat()).toDouble(),
             backgroundEnabled = prefs.getBoolean("bg_enabled", true),
             remoteActivated = remote.isActivated,
+            places = placeBook.places(),
+            rules = placeBook.rules(),
+            prices = settings.prices,
+            tankLiters = settings.tankLiters,
+            notify = settings.notify,
+            backupFolder = settings.backupTreeUri,
+            lastBackup = settings.lastBackupAt,
         )
     )
         private set
 
     init {
+        Notifier.ensureChannels(app)
         ui = ui.copy(trips = tripStore.load())
         restoreCache()
         recomputeBattery()
@@ -136,6 +170,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(loggingIn = true, error = null)
         try {
             auth.exchangeCode(code)
+            Notifier.loginRestored(getApplication())
             ui = ui.copy(loggedIn = true, loggingIn = false)
             SnapshotWorker.schedule(getApplication(), ui.backgroundEnabled)
             refresh().join()
@@ -169,6 +204,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .putString("cache_status", statusJson.toString())
                 .putString("cache_maint", maintenance?.toString())
                 .apply()
+            val app = getApplication<Application>()
+            Notifier.check(app, status)
+            StatusWidget.updateAll(app)
             ui = ui.copy(
                 vehicles = vehicles,
                 selectedId = selected.id,
@@ -216,9 +254,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val since = if (full) null else tripStore.newestStart()?.minusSeconds(3600)
             val raw = api.trips(vehicleId, since)
             val added = withContext(Dispatchers.IO) { tripStore.merge(raw) }
+            val auto = applyRulesQuietly()
             ui = ui.copy(
                 trips = tripStore.load(),
-                tripsInfo = if (added == 0) "Keine neuen Fahrten." else "$added neue Fahrt(en) übernommen."
+                tripsInfo = (if (added == 0) "Keine neuen Fahrten." else "$added neue Fahrt(en) übernommen.") +
+                    if (auto > 0) " $auto automatisch zugeordnet." else ""
             )
             recomputeBattery()
             resolveAddresses()
@@ -234,7 +274,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun resolveAddresses() = withContext(Dispatchers.IO) {
         if (!Geocoder.isPresent()) return@withContext
         val geocoder = Geocoder(getApplication(), Locale.GERMANY)
-        val todo = tripStore.load().filter {
+        val todo = tripStore.loadSingles().filter {
             (it.startAddress == null && it.startPos != null) || (it.endAddress == null && it.endPos != null)
         }.take(40)
         for (t in todo) {
@@ -266,7 +306,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ?: throw IllegalStateException("Datei konnte nicht geöffnet werden.")
                 tripStore.importMyop(text, ui.vehicle?.vin)
             }
-            ui = ui.copy(trips = tripStore.load(), tripsInfo = "myOpel-Import: ${result.summary}")
+            val auto = applyRulesQuietly()
+            ui = ui.copy(
+                trips = tripStore.load(),
+                tripsInfo = "myOpel-Import: ${result.summary}" + if (auto > 0) " $auto automatisch zugeordnet." else "",
+            )
             recomputeBattery()
             resolveAddresses()
         } catch (e: org.json.JSONException) {
@@ -284,9 +328,140 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun exportCsv(trips: List<Trip>): Uri {
-        val file = tripStore.exportCsv(trips, ui.battery)
+        val file = tripStore.exportCsv(trips, ui.battery, cost = ::tripCost, placeName = ::placeName)
         val ctx = getApplication<Application>()
         return FileProvider.getUriForFile(ctx, ctx.packageName + ".fileprovider", file)
+    }
+
+    /** Hängt eine Fahrt an die vorherige an (z. B. Umparken oder kurzer Zwischenstopp). */
+    fun mergeTripWithPrevious(key: String): Boolean {
+        val merged = tripStore.mergeWithPrevious(key) ?: run {
+            ui = ui.copy(tripsInfo = "Keine vorherige Fahrt zum Zusammenführen gefunden.")
+            return false
+        }
+        ui = ui.copy(trips = tripStore.load(), tripsInfo = "Fahrten zusammengeführt.")
+        recomputeBattery()
+        return merged.isNotEmpty()
+    }
+
+    fun splitTrip(key: String) {
+        tripStore.split(key)
+        ui = ui.copy(trips = tripStore.load(), tripsInfo = "Zusammenführung aufgehoben.")
+        recomputeBattery()
+    }
+
+    fun tripCost(t: Trip): Double? = History.tripCost(t, ui.battery[t.key], ui.prices)
+
+    // ------------------------------------------------------------------ Orte & Regeln
+
+    fun placeName(p: LatLon?): String? = PlaceBook.placeAt(ui.places, p)?.name
+
+    fun addPlace(name: String, pos: LatLon, radiusM: Double = 200.0) {
+        if (name.isBlank()) return
+        placeBook.addPlace(name, pos, radiusM)
+        reloadPlaces()
+    }
+
+    fun updatePlace(p: Place) {
+        placeBook.savePlace(p)
+        reloadPlaces()
+    }
+
+    fun deletePlace(id: String) {
+        placeBook.deletePlace(id)
+        reloadPlaces()
+    }
+
+    fun addRule(fromId: String?, toId: String?, category: TripCategory, bothWays: Boolean) {
+        if (fromId == null && toId == null) return
+        placeBook.addRule(fromId, toId, category, bothWays)
+        reloadPlaces()
+    }
+
+    fun deleteRule(id: String) {
+        placeBook.deleteRule(id)
+        reloadPlaces()
+    }
+
+    /** Wendet die Regeln auf alle noch nicht zugeordneten Fahrten an. */
+    fun applyRulesNow(): Int {
+        val n = applyRulesQuietly()
+        ui = ui.copy(trips = tripStore.load(), tripsInfo = if (n == 0) "Keine weiteren Fahrten passen zu den Regeln." else "$n Fahrt(en) automatisch zugeordnet.")
+        return n
+    }
+
+    private fun applyRulesQuietly(): Int {
+        val places = ui.places
+        val rules = ui.rules
+        if (rules.isEmpty()) return 0
+        return tripStore.applyRules { PlaceBook.categoryFor(it, places, rules) }
+    }
+
+    private fun reloadPlaces() {
+        ui = ui.copy(places = placeBook.places(), rules = placeBook.rules())
+    }
+
+    // ------------------------------------------------------------------ Kosten & Benachrichtigungen
+
+    fun setPrices(p: Prices) {
+        settings.prices = p
+        ui = ui.copy(prices = p)
+    }
+
+    fun setTankLiters(l: Double) {
+        if (l !in 10.0..150.0) return
+        settings.tankLiters = l
+        ui = ui.copy(tankLiters = l)
+    }
+
+    fun setNotify(n: NotifyPrefs) {
+        settings.notify = n
+        ui = ui.copy(notify = n)
+    }
+
+    // ------------------------------------------------------------------ Datensicherung
+
+    fun exportBackup(uri: Uri) = viewModelScope.launch {
+        ui = ui.copy(backupInfo = runCatching {
+            withContext(Dispatchers.IO) { backup.writeTo(uri) }
+            "Sicherung gespeichert."
+        }.getOrElse { "Sicherung fehlgeschlagen: ${it.message}" })
+    }
+
+    fun importBackup(uri: Uri) = viewModelScope.launch {
+        ui = ui.copy(backupInfo = runCatching {
+            val r = withContext(Dispatchers.IO) { backup.readFrom(uri) }
+            ui = ui.copy(
+                trips = tripStore.load(), prices = settings.prices, tankLiters = settings.tankLiters,
+                capacityKwh = settings.capacityKwh,
+            )
+            reloadPlaces()
+            recomputeBattery()
+            "Wiederhergestellt: ${r.summary}"
+        }.getOrElse { "Wiederherstellen fehlgeschlagen: ${it.message}" })
+    }
+
+    /** Ordner für die automatische tägliche Sicherung (null = ausschalten). */
+    fun setBackupFolder(uri: Uri?) {
+        val cr = getApplication<Application>().contentResolver
+        val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        settings.backupTreeUri?.let { old -> runCatching { cr.releasePersistableUriPermission(Uri.parse(old), flags) } }
+        if (uri != null) runCatching { cr.takePersistableUriPermission(uri, flags) }
+        settings.backupTreeUri = uri?.toString()
+        ui = ui.copy(backupFolder = uri?.toString())
+        if (uri != null) backupNow()
+    }
+
+    fun backupNow() = viewModelScope.launch {
+        val ok = runCatching { withContext(Dispatchers.IO) { backup.autoBackup(force = true) } }
+        ui = ui.copy(
+            lastBackup = settings.lastBackupAt,
+            backupInfo = when {
+                ok.isFailure -> "Sicherung fehlgeschlagen: ${ok.exceptionOrNull()?.message}"
+                ok.getOrNull() == true -> "In den gewählten Ordner gesichert."
+                else -> "Kein Zugriff auf den Sicherungsordner – bitte neu auswählen."
+            },
+        )
     }
 
     // ------------------------------------------------------------------ Akku-Verbrauch
@@ -297,6 +472,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             battery = EnergyLog.compute(ui.trips, snaps, ui.capacityKwh),
             snapshotCount = snaps.size,
             lastSnapshot = snaps.lastOrNull()?.at,
+            snapshots = snaps,
         )
     }
 
@@ -420,7 +596,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         SnapshotWorker.schedule(getApplication(), false)
         CookieManager.getInstance().removeAllCookies(null)
         prefs.edit().remove("cache_status").remove("cache_vehicles").remove("cache_maint").apply()
-        ui = UiState(loggedIn = false, trips = ui.trips, capacityKwh = ui.capacityKwh, backgroundEnabled = ui.backgroundEnabled)
+        ui = ui.copy(
+            loggedIn = false, loading = false, vehicles = emptyList(), selectedId = null, status = null,
+            rawStatus = null, rawMaintenance = null, rawVehicles = null, remoteActivated = false,
+            smsRequested = false, commands = emptyList(), remoteInfo = null,
+        )
+        StatusWidget.updateAll(getApplication())
     }
 
     override fun onCleared() {

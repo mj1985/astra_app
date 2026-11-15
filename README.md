@@ -16,6 +16,20 @@ Stellantis Connected-Car-API v4 – dieselbe Schnittstelle, die auch die MyOpel-
   Fahrzeug aufwecken (frischer Status) – mit Rückmeldung vom Auto
 - **Akku-Verbrauch pro Fahrt (berechnet):** Ladestand vor/nach der Fahrt × nutzbare Kapazität (einstellbar,
   Standard 10,2 kWh); der Ladestand wird dafür alle 15 Min. im Hintergrund aufgezeichnet
+- **myOpel-Import:** Export der myOpel-App (`.myop` oder ohne Endung) einlesen; Fahrten werden mit dem
+  Fahrtenbuch abgeglichen (Startzeit ± 3 min bzw. gleicher km-Stand) und ergänzt
+- **Fahrten zusammenführen/trennen:** Umparken oder kurze Zwischenstopps an die vorherige Fahrt anhängen
+- **Orte & Regeln:** häufige Orte benennen („Zuhause“, „Arbeit“), Regeln wie „Zuhause ↔ Arbeit = Arbeitsweg“;
+  neue Fahrten werden automatisch zugeordnet (von Hand gesetzte Kategorien bleiben unangetastet)
+- **Kosten:** Benzin- und Strompreis (inkl. Ladeverluste) → Kosten pro Fahrt, Monat und Kategorie
+- **Statistik:** km pro Monat (rein elektrisch / mit Benzin), Ø Benzinverbrauch, Kosten, Monatstabelle,
+  Ladestand-Kurve der letzten 7 Tage, Lade- und Tankhistorie, Datenabgleich API ↔ myOpel (Einheiten-Check)
+- **Karte:** Fahrten (Start → Ziel) und Häufigkeitskarte auf OpenStreetMap; Mini-Karte pro Fahrt
+- **Benachrichtigungen:** Laden fertig/abgebrochen, Auto nachts offen, 12-V-Batterie schwach, Wartung fällig,
+  Anmeldung abgelaufen
+- **Homescreen-Widget:** Ladestand, Reichweite, Verriegelung, Taste „Zu“ (braucht eingerichtete Fernsteuerung)
+- **Datensicherung:** Export/Import als JSON und automatische tägliche Sicherung in einen wählbaren Ordner
+  (z. B. Google Drive) – ohne Zugangsdaten
 - **API-Rohdaten:** die unveränderten JSON-Antworten zum Nachsehen/Kopieren
 
 ## Login

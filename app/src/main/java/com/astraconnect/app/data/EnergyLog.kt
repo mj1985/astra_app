@@ -13,6 +13,8 @@ data class EnergySnapshot(
     val mileage: Double?,
     val soc: Double?,
     val charging: Boolean,
+    /** Tankstand in % (ab dieser Version mit aufgezeichnet – für das Tankbuch). */
+    val fuel: Double? = null,
 )
 
 /** Berechneter Akku-Verbrauch einer Fahrt. */
@@ -34,17 +36,20 @@ data class BatteryUse(
  * Daraus wird der Akku-Verbrauch pro Fahrt berechnet: Ladestand vor der Fahrt minus
  * Ladestand nach der Fahrt × nutzbare Akkukapazität.
  */
-class EnergyLog(context: Context) {
-    private val file = File(context.filesDir, "energy_log.json")
+class EnergyLog(private val file: File) {
+
+    constructor(context: Context) : this(File(context.filesDir, "energy_log.json"))
 
     @Synchronized
     fun all(): List<EnergySnapshot> {
         if (!file.exists()) return emptyList()
         val arr = runCatching { JSONArray(file.readText()) }.getOrElse { return emptyList() }
-        return arr.objects().mapNotNull { o ->
-            val at = parseInstant(o.str("at")) ?: return@mapNotNull null
-            EnergySnapshot(at, o.num("km"), o.num("soc"), o.optBoolean("ch"))
-        }
+        return parse(arr)
+    }
+
+    private fun parse(arr: JSONArray) = arr.objects().mapNotNull { o ->
+        val at = parseInstant(o.str("at")) ?: return@mapNotNull null
+        EnergySnapshot(at, o.num("km"), o.num("soc"), o.optBoolean("ch"), o.num("fu"))
     }
 
     /** Fügt einen Messpunkt hinzu (doppelte Zeitstempel werden ignoriert). Liefert true, wenn neu. */
@@ -54,15 +59,37 @@ class EnergyLog(context: Context) {
         if (status.batteryPercent == null) return false
         val list = all().toMutableList()
         if (list.any { it.at == at }) return false
-        list += EnergySnapshot(at, status.mileageKm, status.batteryPercent, status.charging?.isCharging == true)
-        val trimmed = list.sortedBy { it.at }.takeLast(MAX)
-        val arr = JSONArray()
-        trimmed.forEach { s ->
-            arr.put(JSONObject().put("at", s.at.toString()).put("km", s.mileage ?: JSONObject.NULL)
-                .put("soc", s.soc ?: JSONObject.NULL).put("ch", s.charging))
-        }
-        file.writeText(arr.toString())
+        list += EnergySnapshot(at, status.mileageKm, status.batteryPercent, status.charging?.isCharging == true, status.fuelPercent)
+        save(list)
         return true
+    }
+
+    private fun save(list: List<EnergySnapshot>) {
+        file.parentFile?.mkdirs()
+        file.writeText(toJson(list.sortedBy { it.at }.takeLast(MAX)).toString())
+    }
+
+    private fun toJson(list: List<EnergySnapshot>): JSONArray {
+        val arr = JSONArray()
+        list.forEach { s ->
+            arr.put(JSONObject().put("at", s.at.toString()).put("km", s.mileage ?: JSONObject.NULL)
+                .put("soc", s.soc ?: JSONObject.NULL).put("ch", s.charging).put("fu", s.fuel ?: JSONObject.NULL))
+        }
+        return arr
+    }
+
+    /** Für die Datensicherung. */
+    @Synchronized
+    fun exportJson(): JSONArray = toJson(all())
+
+    /** Messpunkte aus einer Sicherung ergänzen (gleiche Zeitstempel werden übersprungen). */
+    @Synchronized
+    fun restore(arr: JSONArray): Int {
+        val list = all().toMutableList()
+        val known = list.map { it.at }.toHashSet()
+        val add = parse(arr).filter { known.add(it.at) }
+        if (add.isNotEmpty()) save(list + add)
+        return add.size
     }
 
     @Synchronized
@@ -136,6 +163,11 @@ class EnergyLog(context: Context) {
 object Stores {
     @Volatile private var trips: TripStore? = null
     @Volatile private var energy: EnergyLog? = null
+    @Volatile private var places: PlaceBook? = null
+
+    fun places(ctx: Context): PlaceBook = places ?: synchronized(this) {
+        places ?: PlaceBook(ctx.applicationContext).also { places = it }
+    }
 
     fun trips(ctx: Context): TripStore = trips ?: synchronized(this) {
         trips ?: TripStore(ctx.applicationContext).also { trips = it }

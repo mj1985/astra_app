@@ -195,7 +195,7 @@ fun TripLogScreen(vm: AppViewModel) {
             }
         }
 
-        items(shown, key = { it.key }) { t -> TripItem(t, ui.battery[t.key]) { editing = t } }
+        items(shown, key = { it.key }) { t -> TripItem(t, ui.battery[t.key], vm) { editing = t } }
 
         if (ui.trips.isNotEmpty()) {
             item {
@@ -207,12 +207,12 @@ fun TripLogScreen(vm: AppViewModel) {
     }
 
     editing?.let { t ->
-        TripSheet(t, ui.battery[t.key], ui.capacityKwh, onDismiss = { editing = null }, onSave = { c, n -> vm.updateTrip(t.key, c, n); editing = null })
+        TripSheet(t, ui.battery[t.key], ui.capacityKwh, vm, onDismiss = { editing = null }, onSave = { c, n -> vm.updateTrip(t.key, c, n); editing = null })
     }
 }
 
 @Composable
-private fun TripItem(t: Trip, b: BatteryUse?, onClick: () -> Unit) {
+private fun TripItem(t: Trip, b: BatteryUse?, vm: AppViewModel, onClick: () -> Unit) {
     Card(
         Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
@@ -230,7 +230,7 @@ private fun TripItem(t: Trip, b: BatteryUse?, onClick: () -> Unit) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "${place(t.startAddress, t.startPos)}  →  ${place(t.endAddress, t.endPos)}",
+                "${vm.placeName(t.startPos) ?: place(t.startAddress, t.startPos)}  →  ${vm.placeName(t.endPos) ?: place(t.endAddress, t.endPos)}",
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
@@ -253,6 +253,14 @@ private fun TripItem(t: Trip, b: BatteryUse?, onClick: () -> Unit) {
                 }
                 Spacer(Modifier.height(6.dp))
             }
+            vm.tripCost(t)?.takeIf { it >= 0.01 }?.let { c ->
+                Text(
+                    "Kosten ≈ " + String.format(Locale.GERMANY, "%.2f €", c),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+            }
             if (b?.kwh != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.BatteryChargingFull, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
@@ -266,7 +274,11 @@ private fun TripItem(t: Trip, b: BatteryUse?, onClick: () -> Unit) {
                 Spacer(Modifier.height(6.dp))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusChip(t.category.label, if (t.category == TripCategory.UNSET) Warn else Ok)
+                StatusChip(t.category.label + if (t.autoCategory) " · auto" else "", if (t.category == TripCategory.UNSET) Warn else Ok)
+                if (t.isMerged) {
+                    Spacer(Modifier.width(8.dp))
+                    StatusChip("${t.partKeys.size} Teile", MaterialTheme.colorScheme.secondary)
+                }
                 if (t.source == TripSource.MYOPEL) {
                     Spacer(Modifier.width(8.dp))
                     StatusChip("myOpel", MaterialTheme.colorScheme.tertiary)
@@ -285,7 +297,7 @@ private fun place(addr: String?, p: LatLon?) =
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun TripSheet(t: Trip, b: BatteryUse?, capacityKwh: Double, onDismiss: () -> Unit, onSave: (TripCategory, String) -> Unit) {
+private fun TripSheet(t: Trip, b: BatteryUse?, capacityKwh: Double, vm: AppViewModel, onDismiss: () -> Unit, onSave: (TripCategory, String) -> Unit) {
     var category by remember { mutableStateOf(t.category) }
     var note by remember { mutableStateOf(t.note) }
     var showRaw by remember { mutableStateOf(false) }
@@ -295,15 +307,19 @@ private fun TripSheet(t: Trip, b: BatteryUse?, capacityKwh: Double, onDismiss: (
             item {
                 Text("Fahrt vom ${t.startedAt.dateLong()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
+                TripMiniMap(t)
+                Spacer(Modifier.height(8.dp))
                 InfoRow("Abfahrt", t.startedAt.dateTime())
                 InfoRow("Ankunft", t.stoppedAt.dateTime())
                 InfoRow("Dauer", t.duration.pretty())
                 InfoRow("Strecke", t.distanceKm.km(1))
                 InfoRow("km-Stand Start", t.startMileage.km())
                 InfoRow("km-Stand Ende", t.endMileage.km())
-                InfoRow("Start", place(t.startAddress, t.startPos))
-                InfoRow("Ziel", place(t.endAddress, t.endPos))
+                InfoRow("Start", listOfNotNull(vm.placeName(t.startPos), place(t.startAddress, t.startPos)).joinToString(" – "))
+                InfoRow("Ziel", listOfNotNull(vm.placeName(t.endPos), place(t.endAddress, t.endPos)).joinToString(" – "))
                 InfoRow("Quelle", t.source.label)
+                if (t.isMerged) InfoRow("Zusammengeführt", "aus ${t.partKeys.size} Fahrten")
+                vm.tripCost(t)?.let { InfoRow("Energiekosten (geschätzt)", String.format(Locale.GERMANY, "%.2f €", it)) }
                 if (t.fuelLiters != null || t.avgFuel != null) {
                     HorizontalDivider(Modifier.padding(vertical = 12.dp))
                     Text("Kraftstoff", fontWeight = FontWeight.SemiBold)
@@ -348,7 +364,23 @@ private fun TripSheet(t: Trip, b: BatteryUse?, capacityKwh: Double, onDismiss: (
                     label = { Text("Zweck / Geschäftspartner / Notiz") },
                     modifier = Modifier.fillMaxWidth(), minLines = 2,
                 )
+                if (t.autoCategory && category == t.category) {
+                    Text(
+                        "Automatisch über eine Ortsregel zugeordnet. Speichern macht die Kategorie zur festen Angabe.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
+                // Zusammenführen (Umparken, kurzer Stopp) bzw. wieder trennen
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { if (vm.mergeTripWithPrevious(t.key)) onDismiss() }) {
+                        Text("Mit vorheriger Fahrt zusammenführen")
+                    }
+                    if (t.isMerged) {
+                        OutlinedButton(onClick = { vm.splitTrip(t.key); onDismiss() }) { Text("Wieder trennen") }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
                 Row {
                     TextButton(onClick = { showRaw = !showRaw }) { Text(if (showRaw) "Rohdaten ausblenden" else "Rohdaten anzeigen") }
                     Spacer(Modifier.weight(1f))

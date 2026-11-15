@@ -84,6 +84,9 @@ fun SettingsScreen(vm: AppViewModel) {
                 }
             }
         }
+        item { CostSettings(vm) }
+        item { NotificationSettings(vm) }
+        item { BackupSettings(vm) }
         item {
             SectionCard("Fernsteuerung", Icons.Filled.SettingsRemote) {
                 InfoRow("Status", if (ui.remoteActivated) "eingerichtet" else "nicht eingerichtet")

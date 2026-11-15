@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.astraconnect.app.widget.StatusWidget
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -31,17 +32,26 @@ class SnapshotWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
         return try {
             val before = log.all().lastOrNull()
             val json = api.status(vehicleId)
-            val status = VehicleStatus.parse(json, null)
+            val maint = prefs.getString("cache_maint", null)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+            val status = VehicleStatus.parse(json, maint)
             log.record(status)
             prefs.edit().putString("cache_status", json.toString()).apply()
+            Notifier.check(ctx, status)
+            StatusWidget.updateAll(ctx)
 
             val moved = before?.mileage != null && status.mileageKm != null && status.mileageKm > before.mileage + 0.5
             if (moved) {
                 val trips = Stores.trips(ctx)
                 trips.merge(api.trips(vehicleId, trips.newestStart()?.minusSeconds(3600)))
+                val book = Stores.places(ctx)
+                val places = book.places()
+                val rules = book.rules()
+                trips.applyRules { PlaceBook.categoryFor(it, places, rules) }
             }
+            runCatching { Backup(ctx).autoBackup() }
             Result.success()
         } catch (e: AuthExpiredException) {
+            Notifier.loginExpired(ctx)
             Result.success()
         } catch (e: Exception) {
             Result.retry()

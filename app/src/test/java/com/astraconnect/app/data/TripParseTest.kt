@@ -49,9 +49,24 @@ class TripParseTest {
     }
 
     @Test
-    fun myopZeroFuel_isNull() {
+    fun myopZeroFuel_isElectric() {
         val mt = JSONObject().put("fuelConsumption", 0).put("distance", 4.6)
             .put("start", JSONObject().put("date", "2026-11-11T07:58:51.001Z"))
-        assertNull(Trip.parse(JSONObject().put("key", "k").put("myop", mt)).fuelLiters)
+        val t = Trip.parse(JSONObject().put("key", "k").put("myop", mt))
+        assertEquals(0.0, t.fuelLiters!!, 0.0)
+        assertEquals(true, History.isElectric(t))
+    }
+
+    @Test
+    fun apiWithoutFuelEntry_isElectric() {
+        val raw = JSONObject().put("id", "e").put("distance", 4.5)
+            .put("energyConsumptions", JSONArray().put(JSONObject().put("type", "Electric").put("consumption", 1.1)))
+        assertEquals(0.0, Trip.parse(JSONObject().put("key", "e").put("raw", raw)).fuelLiters!!, 0.0)
+    }
+
+    @Test
+    fun apiWithoutConsumptions_isUnknown() {
+        val raw = JSONObject().put("id", "u").put("distance", 4.5)
+        assertNull(Trip.parse(JSONObject().put("key", "u").put("raw", raw)).fuelLiters)
     }
 }

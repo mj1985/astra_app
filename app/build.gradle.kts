@@ -58,6 +58,9 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
     implementation("androidx.work:work-runtime-ktx:2.10.3")
+    implementation("androidx.documentfile:documentfile:1.1.0")
+    // Karten (OpenStreetMap)
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 
     testImplementation("junit:junit:4.13.2")
     // Echte org.json-Implementierung für Unit-Tests (Android-Stub liefert nur Defaultwerte)

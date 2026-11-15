@@ -1,6 +1,18 @@
 package com.astraconnect.app.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -52,6 +64,9 @@ enum class Dest(val title: String, val icon: ImageVector) {
     OVERVIEW("Übersicht", Icons.Filled.Dashboard),
     REMOTE("Fernsteuerung", Icons.Filled.SettingsRemote),
     TRIPS("Fahrtenbuch", Icons.Filled.Route),
+    STATS("Statistik", Icons.Filled.BarChart),
+    MAP("Karte", Icons.Filled.Map),
+    PLACES("Orte & Regeln", Icons.Filled.Place),
     DOORS("Türen & Fenster", Icons.Filled.MeetingRoom),
     SERVICE("Wartung & 12V-Batterie", Icons.Filled.Build),
     SETTINGS("Einstellungen", Icons.Filled.Settings),
@@ -71,6 +86,15 @@ private fun MainScreen(vm: AppViewModel) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val ui = vm.ui
+
+    // Android 13+: einmal pro App-Start nach der Benachrichtigungs-Erlaubnis fragen
+    val ctx = LocalContext.current
+    val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     LaunchedEffect(ui.error) {
         ui.error?.let { snackbar.showSnackbar(it); vm.showError(null) }
@@ -93,16 +117,17 @@ private fun MainScreen(vm: AppViewModel) {
                 }
                 HorizontalDivider()
                 Spacer(Modifier.height(8.dp))
-                Dest.entries.forEach { d ->
-                    NavigationDrawerItem(
-                        label = { Text(d.title) },
-                        icon = { Icon(d.icon, null) },
-                        selected = d == dest,
-                        onClick = { dest = d; scope.launch { drawer.close() } },
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                    )
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    Dest.entries.forEach { d ->
+                        NavigationDrawerItem(
+                            label = { Text(d.title) },
+                            icon = { Icon(d.icon, null) },
+                            selected = d == dest,
+                            onClick = { dest = d; scope.launch { drawer.close() } },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
                 }
-                Spacer(Modifier.weight(1f))
                 HorizontalDivider()
                 NavigationDrawerItem(
                     label = { Text("Abmelden") },
@@ -123,7 +148,7 @@ private fun MainScreen(vm: AppViewModel) {
                         IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Filled.Menu, "Menü") }
                     },
                     actions = {
-                        if (dest != Dest.TRIPS && dest != Dest.SETTINGS) {
+                        if (dest in setOf(Dest.OVERVIEW, Dest.REMOTE, Dest.DOORS, Dest.SERVICE, Dest.RAW)) {
                             IconButton(onClick = { vm.refresh() }, enabled = !ui.loading) {
                                 Icon(Icons.Filled.Refresh, "Aktualisieren")
                             }
@@ -138,6 +163,9 @@ private fun MainScreen(vm: AppViewModel) {
                     Dest.REMOTE -> RemoteScreen(vm)
                     Dest.SETTINGS -> SettingsScreen(vm)
                     Dest.TRIPS -> TripLogScreen(vm)
+                    Dest.STATS -> StatsScreen(vm)
+                    Dest.MAP -> MapScreen(vm)
+                    Dest.PLACES -> PlacesScreen(vm)
                     Dest.DOORS -> DoorsScreen(vm)
                     Dest.SERVICE -> ServiceScreen(vm)
                     Dest.RAW -> RawDataScreen(vm)

@@ -53,7 +53,8 @@ class RemoteControl(
     private val http: OkHttpClient,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val tokenMutex = Mutex()
+    // Prozessweit eine Sperre: App und Widget-Job dürfen nicht gleichzeitig einen OTP-Code verbrauchen.
+    private val tokenMutex get() = TOKEN_MUTEX
     private val mqttMutex = Mutex()
     private val _updates = MutableSharedFlow<CommandUpdate>(extraBufferCapacity = 64)
     val updates = _updates.asSharedFlow()
@@ -318,6 +319,7 @@ class RemoteControl(
         private const val REQ_TOPIC = "psa/RemoteServices/from/cid/"
         private const val RESP_TOPIC = "psa/RemoteServices/to/cid/"
         private val IN_PROGRESS = setOf("900", "901", "903")
+        private val TOKEN_MUTEX = Mutex()
 
         private const val K_OTP = "remote_otp"
         private const val K_CUSTOMER = "remote_customer"
