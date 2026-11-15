@@ -85,9 +85,22 @@ class RemoteControl(
     suspend fun activate(smsCode: String, pin: String) = withContext(Dispatchers.IO) {
         val otp = Otp.newSession()
         otp.activate(http, smsCode, pin)
+        if (otp.missingSecret()) throw ApiException("Aktivierung unvollständig (kein Sicherheitsschlüssel vom OTP-Server). Bitte neue SMS anfordern.")
         store.put(K_OTP, otp.toJson())
         store.remove(K_MQTT_ACCESS, K_MQTT_REFRESH, K_MQTT_EXPIRES, K_MQTT_REFRESH_EXPIRES)
-        mqttToken(force = true)
+        try {
+            mqttToken(force = true)
+        } catch (e: ApiException) {
+            // Halb eingerichteten Zustand nicht stehen lassen, sonst gilt die Fernsteuerung als aktiv.
+            store.remove(K_OTP, K_MQTT_ACCESS, K_MQTT_REFRESH, K_MQTT_EXPIRES, K_MQTT_REFRESH_EXPIRES)
+            if (e.httpCode == 400 && e.oauthError == "invalid_grant") throw ApiException(
+                "Opel hat den Einmal-Code abgelehnt (invalid_grant). Häufigste Ursache: falsche PIN – gemeint ist " +
+                    "die 4-stellige PIN, die du in der MyOpel-App für Fernbefehle festgelegt hast (nicht das Passwort). " +
+                    "Außerdem erlaubt Opel nur wenige Codes pro Tag; nach mehreren Versuchen bis morgen warten.",
+                400, "invalid_grant",
+            )
+            throw e
+        }
         Unit
     }
 
@@ -304,8 +317,13 @@ class RemoteControl(
             http.newCall(b.build()).execute().use { r ->
                 val body = r.body?.string().orEmpty()
                 if (!r.isSuccessful) {
-                    val msg = runCatching { JSONObject(body).let { it.optString("message").ifBlank { it.optString("error_description") } } }.getOrNull()
-                    throw ApiException("Fernsteuerung: HTTP ${r.code}" + if (!msg.isNullOrBlank()) " – $msg" else "", r.code)
+                    val err = runCatching { JSONObject(body) }.getOrNull()
+                    val msg = err?.let { it.optString("message").ifBlank { it.optString("error_description") } }
+                    throw ApiException(
+                        "Fernsteuerung: HTTP ${r.code}" + if (!msg.isNullOrBlank()) " – $msg" else "",
+                        r.code,
+                        err?.optString("error")?.takeIf { it.isNotBlank() },
+                    )
                 }
                 body
             }

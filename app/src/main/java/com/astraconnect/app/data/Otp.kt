@@ -70,6 +70,8 @@ class Otp private constructor() {
         return base36(a * 1024 + b)
     }
 
+    internal fun missingSecret() = iwsecid.isEmpty() || iwsecval.isEmpty() || iwK1.isEmpty()
+
     fun toJson(): String = JSONObject().apply {
         put("deviceId", deviceId); put("iwalea", iwalea); put("codepin", codepin)
         put("kfact", kfact); put("kiw", kiw); put("iwid", iwid); put("iwTsync", iwTsync)
@@ -121,8 +123,10 @@ class Otp private constructor() {
             return if (xml.containsKey("J")) TWICE else OK
         }
 
+        // Wie im Original: Sobald ms_n gemeldet wird, muss der Sicherheitsschlüssel ausgetauscht werden
+        // (auch bei "0"). Ohne diesen Schritt fehlen sid/secval und die erzeugten Codes werden abgelehnt.
         val msN = xml["ms_n"]
-        if (msN == null || msN == "0") return OK
+        if (msN == null || (msN == "0" && xml["ms_key"].isNullOrEmpty())) return OK
         if ((msN.toIntOrNull() ?: 0) > 1) throw OtpException("Nicht unterstützte Aktivierungsvariante (ms_n=$msN)")
 
         // Zweiter Schritt: Sicherheitsschlüssel austauschen
