@@ -60,11 +60,22 @@ class StellantisApi(private val auth: AuthRepository, private val http: OkHttpCl
         return result
     }
 
-    private fun resolve(base: HttpUrl, href: String): HttpUrl? {
-        val u = base.resolve(href) ?: return null
-        // client_id muss bei jedem Aufruf mitgeschickt werden
-        return if (u.queryParameter("client_id") == null)
-            u.newBuilder().addQueryParameter("client_id", auth.clientId).build() else u
+    private fun resolve(base: HttpUrl, href: String): HttpUrl? = resolvePageLink(base, href, auth.clientId)
+
+    companion object {
+        /**
+         * Löst einen Blätter-Link aus der API-Antwort auf. Der Link darf nur auf denselben Server
+         * (per HTTPS) zeigen – sonst würde das Zugangs-Token an eine fremde Adresse geschickt.
+         */
+        internal fun resolvePageLink(base: HttpUrl, href: String, clientId: String): HttpUrl? {
+            val u = base.resolve(href) ?: return null
+            if (!u.isHttps || u.host != base.host || u.port != base.port) {
+                throw ApiException("Unerwarteter Link in der Fahrtenliste (${u.scheme}://${u.host}) – Abruf abgebrochen.")
+            }
+            // client_id muss bei jedem Aufruf mitgeschickt werden
+            return if (u.queryParameter("client_id") == null)
+                u.newBuilder().addQueryParameter("client_id", clientId).build() else u
+        }
     }
 
     private fun url(vararg segments: String): HttpUrl =

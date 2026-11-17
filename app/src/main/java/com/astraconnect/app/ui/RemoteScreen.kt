@@ -1,5 +1,6 @@
 package com.astraconnect.app.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -51,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -130,6 +132,21 @@ private fun RemoteControls(vm: AppViewModel) {
     val s = ui.status
     var confirmUnlock by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
+    val deviceAuth = rememberDeviceAuth()
+    val ctx = LocalContext.current
+    // Entriegeln nur nach Fingerabdruck/Geräte-PIN. Ohne Displaysperre bleibt nur der Bestätigungsdialog.
+    fun requestUnlock() {
+        if (!deviceAuth.available) {
+            confirmUnlock = true
+            return
+        }
+        deviceAuth.authenticate(
+            title = "Fahrzeug entriegeln?",
+            subtitle = "Das Auto wird aus der Ferne aufgeschlossen.",
+            onSuccess = { vm.unlock() },
+            onError = { Toast.makeText(ctx, "Entriegeln abgebrochen: $it", Toast.LENGTH_LONG).show() },
+        )
+    }
     val enabled = !ui.remoteBusy
     val (h, m) = vm.chargeStartTime
 
@@ -142,7 +159,7 @@ private fun RemoteControls(vm: AppViewModel) {
                 s?.let { InfoRow("Aktuell", it.lockLabel) }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ActionTile("Verriegeln", Icons.Filled.Lock, enabled) { vm.lock() }
-                    ActionTile("Entriegeln", Icons.Filled.LockOpen, enabled) { confirmUnlock = true }
+                    ActionTile("Entriegeln", Icons.Filled.LockOpen, enabled) { requestUnlock() }
                 }
             }
         }
@@ -198,7 +215,12 @@ private fun RemoteControls(vm: AppViewModel) {
         AlertDialog(
             onDismissRequest = { confirmUnlock = false },
             title = { Text("Fahrzeug entriegeln?") },
-            text = { Text("Das Auto wird aus der Ferne aufgeschlossen.") },
+            text = {
+                Text(
+                    "Das Auto wird aus der Ferne aufgeschlossen.\n\nHinweis: Auf diesem Handy ist keine Displaysperre " +
+                        "eingerichtet. Mit Displaysperre fragt die App vor dem Entriegeln Fingerabdruck oder Geräte-PIN ab."
+                )
+            },
             confirmButton = { TextButton(onClick = { confirmUnlock = false; vm.unlock() }) { Text("Entriegeln") } },
             dismissButton = { TextButton(onClick = { confirmUnlock = false }) { Text("Abbrechen") } },
         )
