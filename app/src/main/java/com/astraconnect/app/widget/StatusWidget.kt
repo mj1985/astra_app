@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit
  */
 class StatusWidget : AppWidgetProvider() {
 
-    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) = render(context, manager, ids)
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) = updateAll(context)
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
@@ -61,10 +61,13 @@ class StatusWidget : AppWidgetProvider() {
         const val ACTION_LOCK = "com.astraconnect.app.WIDGET_LOCK"
         private const val K_PENDING = "widget_lock_pending"
 
+        /** Aktualisiert alle Widgets. Fehler hier dürfen den Abruf in App/Hintergrund-Job nie abbrechen. */
         fun updateAll(ctx: Context) {
-            val mgr = AppWidgetManager.getInstance(ctx)
-            val ids = mgr.getAppWidgetIds(ComponentName(ctx, StatusWidget::class.java))
-            if (ids.isNotEmpty()) render(ctx, mgr, ids)
+            runCatching {
+                val mgr = AppWidgetManager.getInstance(ctx)
+                val ids = mgr.getAppWidgetIds(ComponentName(ctx, StatusWidget::class.java))
+                if (ids.isNotEmpty()) render(ctx, mgr, ids)
+            }.onFailure { android.util.Log.w("StatusWidget", "Widget-Update fehlgeschlagen", it) }
         }
 
         private fun render(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
@@ -74,7 +77,8 @@ class StatusWidget : AppWidgetProvider() {
             val pending = prefs.getBoolean(K_PENDING, false)
 
             val views = RemoteViews(ctx.packageName, R.layout.widget_status)
-            fun f(v: Double?, unit: String) = v?.let { String.format(Locale.GERMANY, "%.0f$unit", it) } ?: "–"
+            // Einheit nicht in den Formatstring – „%“ wäre dort ein ungültiges Formatzeichen.
+            fun f(v: Double?, unit: String) = v?.let { String.format(Locale.GERMANY, "%.0f", it) + unit } ?: "–"
             views.setTextViewText(R.id.w_soc, f(status?.batteryPercent, " %"))
             views.setTextViewText(R.id.w_charging, if (status?.charging?.isCharging == true) "⚡ lädt" else "")
             views.setTextViewText(
