@@ -1,0 +1,354 @@
+package com.astraconnect.app.widget
+
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Matrix
+import android.widget.RemoteViews
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import com.astraconnect.app.R
+import com.astraconnect.app.data.AuthExpiredException
+import com.astraconnect.app.data.AuthRepository
+import com.astraconnect.app.data.Notifier
+import com.astraconnect.app.data.RemoteCommand
+import com.astraconnect.app.data.RemoteControl
+import com.astraconnect.app.data.SecureStore
+import com.astraconnect.app.data.StellantisApi
+import com.astraconnect.app.data.Vehicle
+import com.astraconnect.app.data.arr
+import com.astraconnect.app.data.obj
+import com.astraconnect.app.data.objects
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+/** Befehle, die das Steuer-Widget senden kann. Entriegeln gibt es bewusst nicht. */
+enum class WidgetCommand(
+    /** Taste im Widget – Klima an/aus teilen sich eine Taste. */
+    val key: String,
+    val label: String,
+    /** Titel der Benachrichtigung bei Erfolg; null = keine (Hupe/Licht hört bzw. sieht man). */
+    val doneTitle: String?,
+) {
+    CLIMATE_ON("climate", "Klimatisierung starten", "Klimatisierung gestartet"),
+    CLIMATE_OFF("climate", "Klimatisierung stoppen", "Klimatisierung gestoppt"),
+    HORN("horn", "Hupe", null),
+    LIGHTS("light", "Lichtsignal", null),
+    LOCK("lock", "Verriegeln", "Auto verriegelt");
+
+    fun command(status: JSONObject?): RemoteCommand = when (this) {
+        CLIMATE_ON -> RemoteCommand.preconditioning(true, status)
+        CLIMATE_OFF -> RemoteCommand.preconditioning(false, status)
+        HORN -> RemoteCommand.horn()
+        LIGHTS -> RemoteCommand.lights()
+        LOCK -> RemoteCommand.lock()
+    }
+}
+
+/** Steuer-Widget (5×2): Klimatisierung, Hupe, Licht, Verriegeln – rechts das angeschnittene Fahrzeugbild. */
+class ControlWidget : BaseWidget() {
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action != ACTION_COMMAND) return
+        val cmd = intent.getStringExtra(EXTRA_CMD)?.let { runCatching { WidgetCommand.valueOf(it) }.getOrNull() } ?: return
+        if (!PendingCommands.add(context, cmd.key)) return // läuft schon
+        Widgets.updateAll(context)
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "widget_command", ExistingWorkPolicy.APPEND_OR_REPLACE,
+            OneTimeWorkRequestBuilder<WidgetCommandWorker>()
+                .setInputData(workDataOf(EXTRA_CMD to cmd.name))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build(),
+        )
+    }
+
+    companion object {
+        const val ACTION_COMMAND = "com.astraconnect.app.WIDGET_COMMAND"
+        const val EXTRA_CMD = "cmd"
+
+        fun render(src: WidgetSource): RemoteViews {
+            val ctx = src.ctx
+            val s = src.status
+            val v = src.views(R.layout.widget_control)
+            val pending = PendingCommands.get(src.prefs)
+
+            fun button(key: String, btn: Int, icon: Int, label: Int, text: String, cmd: WidgetCommand, active: Boolean, tint: Int? = null) {
+                val busy = key in pending
+                v.setTextViewText(label, if (busy) "Sende …" else text)
+                v.setInt(icon, "setBackgroundResource", if (active) R.drawable.widget_round_bg_active else R.drawable.widget_round_bg)
+                v.setInt(icon, "setColorFilter", if (active) COLOR_DARK else tint ?: Color.WHITE)
+                v.setInt(icon, "setImageAlpha", if (busy) 110 else 255)
+                val intent = Intent(ctx, ControlWidget::class.java).setAction(ACTION_COMMAND).putExtra(EXTRA_CMD, cmd.name)
+                v.setOnClickPendingIntent(
+                    btn,
+                    PendingIntent.getBroadcast(ctx, 100 + cmd.ordinal, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),
+                )
+            }
+
+            val climateOn = s?.preconditioning.equals("Enabled", true)
+            button("climate", R.id.w_btn_climate, R.id.w_icon_climate, R.id.w_label_climate,
+                if (climateOn) "Klima an" else "Klima",
+                if (climateOn) WidgetCommand.CLIMATE_OFF else WidgetCommand.CLIMATE_ON, active = climateOn)
+            button("horn", R.id.w_btn_horn, R.id.w_icon_horn, R.id.w_label_horn, "Hupe", WidgetCommand.HORN, false)
+            button("light", R.id.w_btn_light, R.id.w_icon_light, R.id.w_label_light, "Licht", WidgetCommand.LIGHTS, false)
+            val locked = s?.isLocked == true
+            button("lock", R.id.w_btn_lock, R.id.w_icon_lock, R.id.w_label_lock,
+                if (locked) "Verriegelt" else "Verriegeln", WidgetCommand.LOCK, false, tint = if (locked) COLOR_OK else null)
+
+            CarImage.ensure(ctx, src.prefs)
+            val car = CarImage.load(ctx, src.prefs)
+            if (car != null) v.setImageViewBitmap(R.id.w_car, car)
+            v.setOnClickPendingIntent(R.id.w_car, src.openApp())
+            return v
+        }
+    }
+}
+
+/** Gerade gesendete Befehle (Taste zeigt „Sende …“). Einträge verfallen nach 10 Minuten. */
+internal object PendingCommands {
+    private const val K = "widget_cmd_pending"
+    private const val MAX_AGE_MS = 10 * 60_000L
+
+    private fun entries(prefs: SharedPreferences): Map<String, Long> {
+        val now = System.currentTimeMillis()
+        return (prefs.getStringSet(K, emptySet()) ?: emptySet()).mapNotNull { e ->
+            val key = e.substringBefore('@')
+            val at = e.substringAfter('@', "").toLongOrNull() ?: return@mapNotNull null
+            (key to at).takeIf { now - at < MAX_AGE_MS }
+        }.toMap()
+    }
+
+    fun get(prefs: SharedPreferences): Set<String> = entries(prefs).keys
+
+    /** false, wenn derselbe Befehl schon unterwegs ist. */
+    @Synchronized
+    fun add(ctx: Context, key: String): Boolean {
+        val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+        val current = entries(prefs)
+        if (key in current) return false
+        save(prefs, current + (key to System.currentTimeMillis()))
+        return true
+    }
+
+    @Synchronized
+    fun remove(ctx: Context, key: String) {
+        val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+        save(prefs, entries(prefs) - key)
+    }
+
+    private fun save(prefs: SharedPreferences, m: Map<String, Long>) {
+        prefs.edit().putStringSet(K, m.map { (k, at) -> "$k@$at" }.toSet()).commit()
+    }
+}
+
+/** Sendet einen Widget-Befehl und wartet bis zu 2 Minuten auf die Rückmeldung des Autos. */
+class WidgetCommandWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+    override suspend fun doWork(): Result {
+        val ctx = applicationContext
+        val cmd = inputData.getString(ControlWidget.EXTRA_CMD)
+            ?.let { runCatching { WidgetCommand.valueOf(it) }.getOrNull() } ?: return Result.success()
+        val store = SecureStore(ctx)
+        val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).build()
+        val auth = AuthRepository(store, http)
+        val remote = RemoteControl(store, auth, http)
+        val failed = "${cmd.label} fehlgeschlagen"
+        try {
+            if (!auth.isLoggedIn) {
+                Notifier.remoteResult(ctx, failed, "Nicht bei Opel angemeldet – bitte die App öffnen.")
+                return Result.success()
+            }
+            if (!remote.isActivated) {
+                Notifier.remoteResult(ctx, failed, "Die Fernsteuerung ist noch nicht eingerichtet (App → Fernsteuerung).")
+                return Result.success()
+            }
+            val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+            val vehicleId = prefs.getString("vehicle_id", null)
+            val vin = selectedVehicle(prefs)?.vin?.takeIf { it.isNotBlank() }
+            if (vin == null) {
+                Notifier.remoteResult(ctx, failed, "Kein Fahrzeug bekannt – bitte einmal die App öffnen.")
+                return Result.success()
+            }
+            val statusJson = prefs.getString("cache_status", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            val c = cmd.command(statusJson)
+            val id = remote.send(vin, c.service, c.params)
+            val result = withTimeoutOrNull(120_000) { remote.updates.first { it.correlationId == id && it.final } }
+            when {
+                result == null -> Notifier.remoteResult(ctx, "${cmd.label} gesendet", "Keine Rückmeldung vom Auto innerhalb von 2 Minuten.")
+                result.success -> {
+                    cmd.doneTitle?.let { Notifier.remoteResult(ctx, it, result.label) }
+                    // Neuen Stand holen, damit Klima-/Schloss-Taste stimmen
+                    if (vehicleId != null && cmd != WidgetCommand.HORN && cmd != WidgetCommand.LIGHTS) {
+                        runCatching {
+                            val json = StellantisApi(auth, http).status(vehicleId)
+                            prefs.edit().putString("cache_status", json.toString()).apply()
+                        }
+                    }
+                }
+                else -> Notifier.remoteResult(ctx, failed, result.label)
+            }
+            return Result.success()
+        } catch (e: AuthExpiredException) {
+            Notifier.loginExpired(ctx)
+            return Result.success()
+        } catch (e: Exception) {
+            Notifier.remoteResult(ctx, failed, e.message ?: e.toString())
+            return Result.success()
+        } finally {
+            remote.disconnect()
+            PendingCommands.remove(ctx, cmd.key)
+            Widgets.updateAll(ctx)
+        }
+    }
+}
+
+internal fun selectedVehicle(prefs: SharedPreferences): Vehicle? {
+    val id = prefs.getString("vehicle_id", null)
+    return prefs.getString("cache_vehicles", null)
+        ?.let { runCatching { JSONObject(it) }.getOrNull() }
+        .obj("_embedded").arr("vehicles").objects()
+        .let { list -> list.firstOrNull { it.optString("id") == id } ?: list.firstOrNull() }
+        ?.let { runCatching { Vehicle.parse(it) }.getOrNull() }
+}
+
+/**
+ * Fahrzeugbild fürs Steuer-Widget: einmal von Opel laden, Hintergrund freistellen, Ränder abschneiden
+ * und als PNG ablegen. Beim Rendern wird es (optional gespiegelt) rechts angeschnitten.
+ */
+internal object CarImage {
+    private const val FILE = "widget_car.png"
+    private const val K_URL = "widget_car_url"
+    private const val K_TRIED = "widget_car_tried"
+    const val K_MIRROR = "widget_car_mirror"
+
+    /** Anteil des Autos, der rechts abgeschnitten wird („leicht angeschnitten“). */
+    private const val CUT = 0.22
+    private const val MAX_HEIGHT = 300
+
+    private fun file(ctx: Context) = File(ctx.filesDir, FILE)
+
+    /** Lädt das Bild im Hintergrund nach, wenn es fehlt oder sich die URL geändert hat. */
+    fun ensure(ctx: Context, prefs: SharedPreferences) {
+        val url = selectedVehicle(prefs)?.pictureUrl ?: return
+        if (prefs.getString(K_URL, null) == url && file(ctx).exists()) return
+        // Fehlversuche höchstens alle 6 Stunden wiederholen
+        val tried = prefs.getString(K_TRIED, null)
+        if (tried != null && tried.substringBefore('|') == url &&
+            System.currentTimeMillis() - (tried.substringAfter('|').toLongOrNull() ?: 0) < 6 * 3600_000L
+        ) return
+        WorkManager.getInstance(ctx).enqueueUniqueWork(
+            "widget_car_image", ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<CarImageWorker>()
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build(),
+        )
+    }
+
+    fun load(ctx: Context, prefs: SharedPreferences): Bitmap? = runCatching {
+        val src = BitmapFactory.decodeFile(file(ctx).path) ?: return null
+        val keep = (src.width * (1 - CUT)).roundToInt().coerceAtLeast(1)
+        val scale = minOf(1f, MAX_HEIGHT.toFloat() / src.height)
+        val m = Matrix().apply {
+            if (prefs.getBoolean(K_MIRROR, false)) postScale(-1f, 1f, src.width / 2f, 0f)
+            postScale(scale, scale)
+        }
+        // Erst spiegeln, dann den rechten Teil abschneiden – die Front zeigt so zu den Tasten
+        val full = Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+        Bitmap.createBitmap(full, 0, 0, (keep * scale).roundToInt().coerceIn(1, full.width), full.height)
+    }.getOrNull()
+
+    suspend fun download(ctx: Context) = withContext(Dispatchers.IO) {
+        val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+        val url = selectedVehicle(prefs)?.pictureUrl ?: return@withContext
+        prefs.edit().putString(K_TRIED, "$url|${System.currentTimeMillis()}").apply()
+        val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).build()
+        val bytes = http.newCall(Request.Builder().url(url).build()).execute().use { r ->
+            if (!r.isSuccessful) error("HTTP ${r.code}")
+            r.body?.bytes() ?: error("leer")
+        }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= 900) sample *= 2
+        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: error("Bild nicht lesbar")
+        val clean = cleanup(decoded)
+        val tmp = File(ctx.filesDir, "$FILE.tmp")
+        tmp.outputStream().use { clean.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        if (!tmp.renameTo(file(ctx))) { file(ctx).delete(); tmp.renameTo(file(ctx)) }
+        prefs.edit().putString(K_URL, url).apply()
+    }
+
+    /** Einfarbigen Hintergrund (vom Rand aus) transparent machen und leere Ränder abschneiden. */
+    private fun cleanup(src: Bitmap): Bitmap {
+        val w = src.width
+        val h = src.height
+        val px = IntArray(w * h)
+        src.copy(Bitmap.Config.ARGB_8888, false).getPixels(px, 0, w, 0, 0, w, h)
+
+        val bg = px[0]
+        if (Color.alpha(bg) > 200) {
+            fun near(c: Int) = Color.alpha(c) > 200 &&
+                abs(Color.red(c) - Color.red(bg)) + abs(Color.green(c) - Color.green(bg)) + abs(Color.blue(c) - Color.blue(bg)) <= 36
+            val seen = BooleanArray(w * h)
+            val queue = IntArray(w * h)
+            var head = 0
+            var tail = 0
+            fun push(i: Int) {
+                if (!seen[i] && near(px[i])) { seen[i] = true; queue[tail++] = i }
+            }
+            for (x in 0 until w) { push(x); push((h - 1) * w + x) }
+            for (y in 0 until h) { push(y * w); push(y * w + w - 1) }
+            while (head < tail) {
+                val i = queue[head++]
+                px[i] = Color.TRANSPARENT
+                val x = i % w
+                if (x > 0) push(i - 1)
+                if (x < w - 1) push(i + 1)
+                if (i >= w) push(i - w)
+                if (i < w * (h - 1)) push(i + w)
+            }
+        }
+
+        var minX = w; var minY = h; var maxX = -1; var maxY = -1
+        for (y in 0 until h) for (x in 0 until w) {
+            if (Color.alpha(px[y * w + x]) > 16) {
+                if (x < minX) minX = x
+                if (x > maxX) maxX = x
+                if (y < minY) minY = y
+                if (y > maxY) maxY = y
+            }
+        }
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(px, 0, w, 0, 0, w, h)
+        return if (maxX < 0) out else Bitmap.createBitmap(out, minX, minY, maxX - minX + 1, maxY - minY + 1)
+    }
+}
+
+class CarImageWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+    override suspend fun doWork(): Result {
+        runCatching { CarImage.download(applicationContext) }
+            .onFailure { android.util.Log.w("CarImage", "Fahrzeugbild nicht geladen", it) }
+        Widgets.updateAll(applicationContext)
+        return Result.success()
+    }
+}

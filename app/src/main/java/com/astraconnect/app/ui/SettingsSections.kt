@@ -9,6 +9,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Euro
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
@@ -48,6 +50,8 @@ import com.astraconnect.app.data.Backup
 import com.astraconnect.app.data.NotifyPrefs
 import com.astraconnect.app.data.Prices
 import com.astraconnect.app.ui.theme.Warn
+import com.astraconnect.app.widget.CarImage
+import com.astraconnect.app.widget.Widgets
 import java.time.Instant
 import java.util.Locale
 
@@ -177,6 +181,34 @@ fun BackupSettings(vm: AppViewModel) {
             }
         }
         ui.backupInfo?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)) }
+    }
+}
+
+@Composable
+fun WidgetSettings() {
+    val ctx = LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE) }
+    var mirror by remember { mutableStateOf(prefs.getBoolean(CarImage.K_MIRROR, false)) }
+    SectionCard("Widgets", Icons.Filled.Widgets) {
+        Text(
+            "Vier Widgets auf dem Startbildschirm: Laden, Steuerung (mit Fahrzeugbild), Reichweite und Letzte Fahrt. " +
+                "Die Steuer-Tasten brauchen die eingerichtete Fernsteuerung.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text("Fahrzeugbild spiegeln")
+                Text(
+                    "Die Front soll zu den Tasten zeigen, das Heck wird am rechten Rand angeschnitten.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = mirror, onCheckedChange = {
+                mirror = it
+                prefs.edit().putBoolean(CarImage.K_MIRROR, it).apply()
+                Widgets.updateAll(ctx)
+            })
+        }
     }
 }
 

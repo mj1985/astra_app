@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Steuer-Widget: Klima, Hupe, Licht, Verriegeln – rechts das Fahrzeugbild, am Rand angeschnitten -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:clipToOutline="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingVertical="8dp"
+        android:paddingStart="10dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/w_btn_climate"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/w_icon_climate"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/widget_round_bg"
+                    android:contentDescription="Klimatisierung"
+                    android:padding="11dp"
+                    android:src="@drawable/ic_w_climate" />
+
+                <TextView
+                    android:id="@+id/w_label_climate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:maxLines="1"
+                    android:text="Klima"
+                    android:textColor="#FFE6E6E6"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/w_btn_horn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/w_icon_horn"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/widget_round_bg"
+                    android:contentDescription="Hupe"
+                    android:padding="11dp"
+                    android:src="@drawable/ic_w_horn" />
+
+                <TextView
+                    android:id="@+id/w_label_horn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:maxLines="1"
+                    android:text="Hupe"
+                    android:textColor="#FFE6E6E6"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/w_btn_light"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/w_icon_light"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/widget_round_bg"
+                    android:contentDescription="Lichtsignal"
+                    android:padding="11dp"
+                    android:src="@drawable/ic_w_light" />
+
+                <TextView
+                    android:id="@+id/w_label_light"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:maxLines="1"
+                    android:text="Licht"
+                    android:textColor="#FFE6E6E6"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/w_btn_lock"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/w_icon_lock"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/widget_round_bg"
+                    android:contentDescription="Verriegeln"
+                    android:padding="11dp"
+                    android:src="@drawable/ic_w_lock" />
+
+                <TextView
+                    android:id="@+id/w_label_lock"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:maxLines="1"
+                    android:text="Verriegeln"
+                    android:textColor="#FFE6E6E6"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Bild ist bereits rechts beschnitten und liegt bündig am Widget-Rand -->
+    <ImageView
+        android:id="@+id/w_car"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:layout_marginStart="6dp"
+        android:layout_weight="1.15"
+        android:adjustViewBounds="true"
+        android:contentDescription="Fahrzeug"
+        android:scaleType="fitEnd" />
+</LinearLayout>

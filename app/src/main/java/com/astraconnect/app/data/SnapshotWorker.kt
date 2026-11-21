@@ -8,7 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.astraconnect.app.widget.StatusWidget
+import com.astraconnect.app.widget.Widgets
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -37,7 +37,7 @@ class SnapshotWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
             log.record(status)
             prefs.edit().putString("cache_status", json.toString()).apply()
             Notifier.check(ctx, status)
-            StatusWidget.updateAll(ctx)
+            Widgets.updateAll(ctx)
 
             val moved = before?.mileage != null && status.mileageKm != null && status.mileageKm > before.mileage + 0.5
             if (moved) {
@@ -47,6 +47,7 @@ class SnapshotWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                 val places = book.places()
                 val rules = book.rules()
                 trips.applyRules { PlaceBook.categoryFor(it, places, rules) }
+                Widgets.updateAll(ctx) // neue Fahrt → „Letzte Fahrt“-Widget
             }
             runCatching { Backup(ctx).autoBackup() }
             Result.success()

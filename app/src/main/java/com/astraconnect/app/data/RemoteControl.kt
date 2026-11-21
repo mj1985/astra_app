@@ -40,6 +40,24 @@ data class CommandUpdate(
     val success: Boolean,
 )
 
+/** Dienst und Parameter eines Fernbefehls – gemeinsam für App und Widget. */
+data class RemoteCommand(val service: String, val params: JSONObject) {
+    companion object {
+        fun lock() = RemoteCommand("/Doors", JSONObject().put("action", "lock"))
+        fun unlock() = RemoteCommand("/Doors", JSONObject().put("action", "unlock"))
+        fun horn() = RemoteCommand("/Horn", JSONObject().put("nb_horn", "2").put("action", "activate"))
+        fun lights() = RemoteCommand("/Lights", JSONObject().put("duration", "10").put("action", "activate"))
+
+        /** [status] = zuletzt abgerufener Status, damit gespeicherte Programme erhalten bleiben. */
+        fun preconditioning(on: Boolean, status: JSONObject?) = RemoteCommand(
+            "/ThermalPrecond",
+            JSONObject()
+                .put("asap", if (on) "activate" else "deactivate")
+                .put("programs", RemoteControl.preconditioningPrograms(status)),
+        )
+    }
+}
+
 /**
  * Fernsteuerung über den MQTT-Dienst von Stellantis (wie die MyOpel-App).
  *

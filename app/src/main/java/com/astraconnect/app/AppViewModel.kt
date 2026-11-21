@@ -25,12 +25,13 @@ import com.astraconnect.app.data.NotifyPrefs
 import com.astraconnect.app.data.Place
 import com.astraconnect.app.data.PlaceBook
 import com.astraconnect.app.data.Prices
-import com.astraconnect.app.widget.StatusWidget
+import com.astraconnect.app.widget.Widgets
 import com.astraconnect.app.data.AuthExpiredException
 import com.astraconnect.app.data.AuthRepository
 import com.astraconnect.app.data.BatteryUse
 import com.astraconnect.app.data.EnergyLog
 import com.astraconnect.app.data.LatLon
+import com.astraconnect.app.data.RemoteCommand
 import com.astraconnect.app.data.RemoteControl
 import com.astraconnect.app.data.SecureStore
 import com.astraconnect.app.data.SnapshotWorker
@@ -220,7 +221,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .apply()
             val app = getApplication<Application>()
             Notifier.check(app, status)
-            StatusWidget.updateAll(app)
             ui = ui.copy(
                 vehicles = vehicles,
                 selectedId = selected.id,
@@ -530,6 +530,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             lastSnapshot = snaps.lastOrNull()?.at,
             snapshots = snaps,
         )
+        // Fahrten, Kapazität oder Status haben sich geändert → Widgets (u. a. „Letzte Fahrt“) nachziehen
+        Widgets.updateAll(getApplication())
     }
 
     fun setCapacity(kwh: Double) {
@@ -581,18 +583,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(remoteActivated = false, smsRequested = false, commands = emptyList(), remoteInfo = null)
     }
 
-    fun lock() = command("Verriegeln", "/Doors", JSONObject().put("action", "lock"))
-    fun unlock() = command("Entriegeln", "/Doors", JSONObject().put("action", "unlock"))
-    fun horn() = command("Hupe", "/Horn", JSONObject().put("nb_horn", "2").put("action", "activate"))
-    fun lights() = command("Lichtsignal", "/Lights", JSONObject().put("duration", "10").put("action", "activate"))
+    fun lock() = command("Verriegeln", RemoteCommand.lock())
+    fun unlock() = command("Entriegeln", RemoteCommand.unlock())
+    fun horn() = command("Hupe", RemoteCommand.horn())
+    fun lights() = command("Lichtsignal", RemoteCommand.lights())
 
     fun preconditioning(on: Boolean) = command(
         if (on) "Vorklimatisierung starten" else "Vorklimatisierung stoppen",
-        "/ThermalPrecond",
-        JSONObject()
-            .put("asap", if (on) "activate" else "deactivate")
-            .put("programs", RemoteControl.preconditioningPrograms(currentStatusJson())),
+        RemoteCommand.preconditioning(on, currentStatusJson()),
     )
+
+    private fun command(name: String, c: RemoteCommand) = command(name, c.service, c.params)
 
     /** Startzeit für verzögertes Laden aus dem Status (sonst 22:00). */
     val chargeStartTime: Pair<Int, Int>
@@ -657,7 +658,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             rawStatus = null, rawMaintenance = null, rawVehicles = null, remoteActivated = false,
             smsRequested = false, commands = emptyList(), remoteInfo = null,
         )
-        StatusWidget.updateAll(getApplication())
+        Widgets.updateAll(getApplication())
     }
 
     override fun onCleared() {

@@ -33,15 +33,50 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Klassenname „StatusWidget“ bleibt, damit bereits platzierte Widgets erhalten bleiben -->
         <receiver
             android:name=".widget.StatusWidget"
-            android:exported="false">
+            android:exported="false"
+            android:label="Astra · Laden">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.ControlWidget"
+            android:exported="false"
+            android:label="Astra · Steuerung">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_control_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.RangeWidget"
+            android:exported="false"
+            android:label="Astra · Reichweite">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_range_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.TripWidget"
+            android:exported="false"
+            android:label="Astra · Letzte Fahrt">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_trip_info" />
         </receiver>
     </application>
 </manifest>
