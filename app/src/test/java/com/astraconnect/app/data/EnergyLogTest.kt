@@ -66,6 +66,56 @@ class EnergyLogTest {
     }
 
     @Test
+    fun lastReportBeforeOpelStopTime_countsByMileage() {
+        // Auto meldet beim Abstellen um +22 (km-Stand schon am Ziel), Opel setzt das Fahrtende auf +30
+        val snaps = listOf(
+            EnergySnapshot(at(-60), 1000.0, 80.0, false),
+            EnergySnapshot(at(22), 1020.0, 60.0, false),
+        )
+        val r = EnergyLog.compute(listOf(trip("a", 0, 30, 20.0, 1000.0)), snaps, 10.0)["a"]!!
+        assertEquals(2.0, r.kwh!!, 1e-9)
+    }
+
+    @Test
+    fun reportDuringTrip_isNotUsedAsEnd() {
+        // Letzte Meldung unterwegs (km 1010 von 1020) → kein Endpunkt, Hinweis statt falschem Wert
+        val snaps = listOf(
+            EnergySnapshot(at(-60), 1000.0, 80.0, false),
+            EnergySnapshot(at(15), 1010.0, 70.0, false),
+        )
+        val r = EnergyLog.compute(listOf(trip("a", 0, 30, 20.0, 1000.0)), snaps, 10.0)["a"]!!
+        assertNull(r.kwh)
+        assertEquals(80.0, r.socStart!!, 1e-9)
+        assertTrue(r.note!!.startsWith("Noch kein Messpunkt nach"))
+    }
+
+    @Test
+    fun chargingStartedRightAfterArrival_isCalculatedAsApprox() {
+        // Zuhause sofort eingesteckt: erste Meldung nach der Fahrt ist schon „lädt“, Ladestand noch der bei Ankunft
+        val snaps = listOf(
+            EnergySnapshot(at(-60), 1000.0, 53.0, false),
+            EnergySnapshot(at(33), 1020.0, 27.0, true),
+            EnergySnapshot(at(60), 1020.0, 40.0, true),
+        )
+        val r = EnergyLog.compute(listOf(trip("a", 0, 30, 20.0, 1000.0)), snaps, 10.0)["a"]!!
+        assertEquals(2.6, r.kwh!!, 1e-9)
+        assertTrue(r.approx)
+        assertTrue(r.estimated)
+    }
+
+    @Test
+    fun chargingReportedLongAfterArrival_isNotCalculated() {
+        // Erste Meldung erst 2 h später und schon beim Laden → Ladestand bei Ankunft unbekannt
+        val snaps = listOf(
+            EnergySnapshot(at(-60), 1000.0, 53.0, false),
+            EnergySnapshot(at(150), 1020.0, 35.0, true),
+        )
+        val r = EnergyLog.compute(listOf(trip("a", 0, 30, 20.0, 1000.0)), snaps, 10.0)["a"]!!
+        assertNull(r.kwh)
+        assertTrue(r.note!!.contains("geladen"))
+    }
+
+    @Test
     fun noSnapshots_givesNote() {
         val r = EnergyLog.compute(listOf(trip("a", 0, 30, 20.0, 1000.0)), listOf(EnergySnapshot(at(40), 1020.0, 60.0, false)), 10.0)["a"]!!
         assertNull(r.kwh)

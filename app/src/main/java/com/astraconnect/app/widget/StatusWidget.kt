@@ -41,12 +41,16 @@ class StatusWidget : BaseWidget() {
     }
 }
 
-/** Reichweiten-Widget (2×2): Akku- und Tankstand mit Balken und Reichweite. */
+/** Reichweiten-Widget: Akku- und Tankstand mit Balken und Reichweite (2×1 kompakt, ab 2 Zeilen mit Gesamt). */
 class RangeWidget : BaseWidget() {
     companion object {
-        fun render(src: WidgetSource): RemoteViews {
+        fun render(src: WidgetSource): List<Variant> = listOf(
+            Variant(0f, fill(src, src.views(R.layout.widget_range_small))),
+            Variant(TWO_ROWS_DP, fill(src, src.views(R.layout.widget_range))),
+        )
+
+        private fun fill(src: WidgetSource, v: RemoteViews): RemoteViews {
             val s = src.status
-            val v = src.views(R.layout.widget_range)
             v.setTextViewText(R.id.w_soc, s?.batteryPercent.pct())
             v.setTextViewText(R.id.w_range_el, s?.electricRangeKm.km())
             v.setProgressBar(R.id.w_soc_bar, 100, percent(s?.batteryPercent), false)

@@ -36,8 +36,8 @@ Stellantis Connected-Car-API v4 – dieselbe Schnittstelle, die auch die MyOpel-
   - *Laden:* Akkustand mit Balken, Ladestatus mit Restladezeit und Fertig-Uhrzeit, Reichweite elektrisch und gesamt (inkl. Benzin)
   - *Steuerung (5×2):* Klimatisierung an/aus, Hupe, Lichtsignal, Verriegeln – rechts das Fahrzeugbild, am Rand angeschnitten
     (Tasten brauchen die eingerichtete Fernsteuerung; Bild spiegeln unter Einstellungen → Widgets)
-  - *Reichweite (2×2):* Akku- und Tankstand mit Reichweite
-  - *Letzte Fahrt:* Strecke, Dauer, Benzin- und Stromverbrauch (gesamt und pro 100 km)
+  - *Reichweite (2×1):* Akku- und Tankstand mit Reichweite; ab 2 Zeilen Höhe zusätzlich die Gesamtreichweite
+  - *Letzte Fahrt (4×1):* Strecke, Dauer, Benzin- und Stromverbrauch (gesamt und pro 100 km); ab 2 Zeilen ausführlicher
 - **Datensicherung:** Export/Import als JSON und automatische tägliche Sicherung in einen wählbaren Ordner
   (z. B. Google Drive) – ohne Zugangsdaten
 - **API-Rohdaten:** die unveränderten JSON-Antworten zum Nachsehen/Kopieren

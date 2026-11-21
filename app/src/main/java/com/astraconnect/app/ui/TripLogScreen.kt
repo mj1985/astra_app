@@ -266,7 +266,7 @@ private fun TripItem(t: Trip, b: BatteryUse?, vm: AppViewModel, onClick: () -> U
                     Icon(Icons.Filled.BatteryChargingFull, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "${b.socStart.pct()} → ${b.socEnd.pct()} · ${(if (b.shared) "≈ " else "")}${b.kwh.num(2, "kWh")}" +
+                        "${b.socStart.pct()} → ${b.socEnd.pct()} · ${(if (b.estimated) "≈ " else "")}${b.kwh.num(2, "kWh")}" +
                             (b.per100km(t.distanceKm)?.let { " · ${it.num(1, "kWh/100 km")}" } ?: ""),
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -335,7 +335,7 @@ private fun TripSheet(t: Trip, b: BatteryUse?, capacityKwh: Double, vm: AppViewM
                     InfoRow("Ladestand Start", b.socStart.pct())
                     InfoRow("Ladestand Ende", b.socEnd.pct())
                     b.kwh?.let { kwh ->
-                        InfoRow("Verbrauch", (if (b.shared) "≈ " else "") + kwh.num(2, "kWh"))
+                        InfoRow("Verbrauch", (if (b.estimated) "≈ " else "") + kwh.num(2, "kWh"))
                         b.per100km(t.distanceKm)?.let { InfoRow("Ø pro 100 km", it.num(1, "kWh")) }
                     }
                     val hint = b.note ?: if (b.shared)

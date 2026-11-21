@@ -24,9 +24,14 @@ data class BatteryUse(
     val kwh: Double?,
     /** Mehrere Fahrten lagen zwischen denselben Messpunkten → nach Strecke aufgeteilt. */
     val shared: Boolean,
-    /** Erklärung, falls nicht berechenbar. */
+    /** Erklärung, falls nicht berechenbar (oder wie der Wert zustande kam). */
     val note: String?,
+    /** Wert ist eine Näherung (z. B. Ladebeginn direkt nach der Fahrt). */
+    val approx: Boolean = false,
 ) {
+    /** Mit „≈“ anzeigen. */
+    val estimated: Boolean get() = shared || approx
+
     fun per100km(distanceKm: Double?): Double? =
         if (kwh != null && distanceKm != null && distanceKm > 0.5) kwh / distanceKm * 100 else null
 }
@@ -101,6 +106,9 @@ class EnergyLog(private val file: File) {
         private const val MAX = 20_000
         private val TOL: Duration = Duration.ofMinutes(3)
 
+        /** So lange nach Fahrtende darf die erste Meldung schon „lädt“ sein und trotzdem als Ankunft gelten. */
+        private val CHARGE_START_WINDOW: Duration = Duration.ofMinutes(20)
+
         fun compute(trips: List<Trip>, snaps: List<EnergySnapshot>, capacityKwh: Double): Map<String, BatteryUse> {
             val sorted = snaps.sortedBy { it.at }
             val result = mutableMapOf<String, BatteryUse>()
@@ -116,13 +124,26 @@ class EnergyLog(private val file: File) {
                     !s.at.isAfter(start.plus(TOL)) &&
                         (s.mileage == null || t.startMileage == null || s.mileage <= t.startMileage + 1)
                 }
-                val after = sorted.firstOrNull { s ->
-                    !s.at.isBefore(stop.minus(TOL)) &&
-                        (s.mileage == null || t.endMileage == null || s.mileage >= t.endMileage - 1)
+                val after = before?.let { b ->
+                    sorted.firstOrNull { s ->
+                        s.at.isAfter(b.at) && if (s.mileage != null && t.endMileage != null) {
+                            // Kilometerstand zeigt das Fahrtende → zählt, auch wenn Opels Endzeit der Fahrt
+                            // später liegt als die letzte Meldung des Autos (sonst erst ab der nächsten Fahrt)
+                            s.mileage >= t.endMileage - 1
+                        } else {
+                            !s.at.isBefore(stop.minus(TOL))
+                        }
+                    }
                 }
-                if (before == null || after == null || !after.at.isAfter(before.at)) {
+                if (before == null) {
                     result[t.key] = BatteryUse(null, null, null, false,
-                        "Keine Messpunkte vor/nach dieser Fahrt (Aufzeichnung lief noch nicht).")
+                        "Kein Messpunkt vor dieser Fahrt (Aufzeichnung lief noch nicht).")
+                    continue
+                }
+                if (after == null) {
+                    result[t.key] = BatteryUse(before.soc, null, null, false,
+                        "Noch kein Messpunkt nach dieser Fahrt – das Auto hat seinen Ladestand seitdem nicht gemeldet. " +
+                            "Der Wert erscheint, sobald es sich wieder meldet.")
                     continue
                 }
                 windows[t.key] = Window(before, after)
@@ -133,12 +154,17 @@ class EnergyLog(private val file: File) {
                 val socB = w.before.soc
                 val socA = w.after.soc
                 val between = sorted.filter { it.at.isAfter(w.before.at) && it.at.isBefore(w.after.at) }
-                val charged = between.any { it.charging } || w.after.charging ||
-                    (socB != null && socA != null && socA > socB + 0.5) ||
-                    between.zipWithNext().any { (a, b) -> a.soc != null && b.soc != null && b.soc > a.soc + 0.5 }
                 val group = entries.mapNotNull { e -> trips.firstOrNull { it.key == e.key } }
                 val totalKm = group.sumOf { it.distanceKm ?: 0.0 }
                 val shared = group.size > 1
+                // Direkt nach dem Abstellen eingesteckt: Die erste Meldung danach ist schon „lädt“, zeigt aber
+                // noch (fast) den Ladestand bei Ankunft → verwendbar, solange er nicht über dem Start liegt.
+                val lastStop = group.mapNotNull { it.stoppedAt }.maxOrNull()
+                val chargeStartedAtArrival = w.after.charging && socB != null && socA != null && socA <= socB &&
+                    lastStop != null && !w.after.at.isAfter(lastStop.plus(CHARGE_START_WINDOW))
+                val charged = between.any { it.charging } || (w.after.charging && !chargeStartedAtArrival) ||
+                    (socB != null && socA != null && socA > socB + 0.5) ||
+                    between.zipWithNext().any { (a, b) -> a.soc != null && b.soc != null && b.soc > a.soc + 0.5 }
 
                 for (t in group) {
                     val share = if (!shared) 1.0
@@ -149,8 +175,11 @@ class EnergyLog(private val file: File) {
                             BatteryUse(socB, socA, null, shared, "Kein Ladestand gemeldet.")
                         charged ->
                             BatteryUse(socB, socA, null, shared, "Zwischen den Messpunkten wurde geladen – nicht berechenbar.")
-                        else ->
-                            BatteryUse(socB, socA, ((socB - socA) / 100.0 * capacityKwh * share).coerceAtLeast(0.0), shared, null)
+                        else -> BatteryUse(
+                            socB, socA, ((socB - socA) / 100.0 * capacityKwh * share).coerceAtLeast(0.0), shared,
+                            if (chargeStartedAtArrival) "Direkt nach der Fahrt wurde geladen – Ende = Ladestand beim Ladebeginn." else null,
+                            approx = chargeStartedAtArrival,
+                        )
                     }
                 }
             }

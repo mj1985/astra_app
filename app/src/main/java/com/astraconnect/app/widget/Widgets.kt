@@ -7,7 +7,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Build
+import android.os.Bundle
 import android.util.Log
+import android.util.SizeF
 import android.widget.RemoteViews
 import com.astraconnect.app.MainActivity
 import com.astraconnect.app.data.VehicleStatus
@@ -27,9 +30,9 @@ object Widgets {
     /** Rendern liest Dateien (Fahrten, Messpunkte, Autobild) – nie auf dem Main-Thread. */
     private val executor = Executors.newSingleThreadExecutor()
 
-    private val renderers: List<Pair<Class<out AppWidgetProvider>, (WidgetSource) -> RemoteViews>> = listOf(
-        StatusWidget::class.java to StatusWidget::render,
-        ControlWidget::class.java to ControlWidget::render,
+    private val renderers: List<Pair<Class<out AppWidgetProvider>, (WidgetSource) -> List<Variant>>> = listOf(
+        StatusWidget::class.java to { src -> listOf(Variant(0f, StatusWidget.render(src))) },
+        ControlWidget::class.java to { src -> listOf(Variant(0f, ControlWidget.render(src))) },
         RangeWidget::class.java to RangeWidget::render,
         TripWidget::class.java to TripWidget::render,
     )
@@ -54,15 +57,41 @@ object Widgets {
         for ((cls, render) in renderers) {
             val ids = mgr.getAppWidgetIds(ComponentName(ctx, cls))
             if (ids.isEmpty()) continue
-            runCatching { mgr.updateAppWidget(ids, render(src)) }
+            runCatching { apply(mgr, ids, render(src).sortedBy { it.minHeightDp }) }
                 .onFailure { Log.w(TAG, "${cls.simpleName} fehlgeschlagen", it) }
+        }
+    }
+
+    private fun apply(mgr: AppWidgetManager, ids: IntArray, variants: List<Variant>) {
+        when {
+            variants.size == 1 -> mgr.updateAppWidget(ids, variants[0].views)
+            // Ab Android 12 wählt der Launcher selbst die größte Variante, die in die aktuelle Größe passt
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+                mgr.updateAppWidget(ids, RemoteViews(variants.associate { SizeF(1f, it.minHeightDp) to it.views }))
+            // Davor: Höhe aus den Widget-Optionen (Hochformat = maximale Höhe)
+            else -> ids.forEach { id ->
+                val h = mgr.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
+                mgr.updateAppWidget(id, (variants.lastOrNull { h >= it.minHeightDp } ?: variants.first()).views)
+            }
         }
     }
 }
 
+/** Eine Ansicht eines Widgets, die ab [minHeightDp] Höhe verwendet wird (0 = kleinste). */
+class Variant(val minHeightDp: Float, val views: RemoteViews)
+
+/** Ab dieser Höhe (≈ 2 Zeilen) zeigen „Letzte Fahrt“ und „Reichweite“ die große Ansicht. */
+internal const val TWO_ROWS_DP = 130f
+
 /** Basis für alle Widget-Provider: Update im Hintergrund, Broadcast bleibt so lange offen. */
 abstract class BaseWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        val pending = goAsync()
+        Widgets.updateAll(context) { pending.finish() }
+    }
+
+    /** Größe geändert → vor Android 12 muss die passende Variante selbst gewählt werden. */
+    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: Bundle) {
         val pending = goAsync()
         Widgets.updateAll(context) { pending.finish() }
     }
