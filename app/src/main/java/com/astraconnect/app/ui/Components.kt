@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -57,16 +58,27 @@ fun SectionCard(
 
 @Composable
 fun InfoRow(label: String, value: String, valueColor: Color = Color.Unspecified, icon: ImageVector? = null) {
+    // Beschriftung höchstens 40 %, Wert höchstens 60 % der Breite: ein langer Wert bricht um,
+    // statt die Beschriftung auf Buchstabenbreite zusammenzudrücken.
     Row(
         Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        if (icon != null) {
-            Icon(icon, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(10.dp))
+        Row(Modifier.weight(2f, fill = false), verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(icon, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(label, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontWeight = FontWeight.Medium, color = valueColor)
+        Text(
+            value,
+            Modifier.weight(3f, fill = false).padding(start = 12.dp),
+            fontWeight = FontWeight.Medium,
+            color = valueColor,
+            textAlign = TextAlign.End,
+        )
     }
 }
 

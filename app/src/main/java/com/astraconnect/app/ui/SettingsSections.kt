@@ -84,7 +84,8 @@ fun VehicleSettings(vm: AppViewModel) {
 
     SectionCard("Fahrzeug", Icons.Filled.DirectionsCar) {
         InfoRow("Modell (laut VIN)", profile.model?.let { "Opel ${it.name}" } ?: "nicht in der Liste")
-        InfoRow("Antrieb", "${pt.label} – ${profile.source.label}")
+        InfoRow("Antrieb", pt.label)
+        InfoRow("Quelle", profile.source.label)
         Spacer(Modifier.height(8.dp))
         Text("Antriebsart", fontWeight = FontWeight.SemiBold)
         (listOf<Powertrain?>(null) + Powertrain.entries).forEach { option ->
