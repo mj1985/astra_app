@@ -44,14 +44,30 @@ Stellantis Connected-Car-API v4 – dieselbe Schnittstelle, die auch die MyOpel-
 
 ## Login
 
-1. App starten → „API-Zugang & manueller Login“ aufklappen.
-2. Client-ID ist vorbelegt (MyOpel, DE). Das **Client-Secret** der MyOpel-App eintragen
-   (z. B. aus `configs.json` des Projekts *homeassistant-stellantis-vehicles*, Eintrag `MyOpel` → `DE`).
+1. App starten → **Land** des MyOpel-Kontos wählen (Standard: Deutschland). Das Land bestimmt
+   Sprache der Anmeldeseite, Redirect und Client-ID.
+2. Client-ID ist passend zum Land vorbelegt. Ist beim Build kein Client-Secret hinterlegt (siehe unten),
+   „API-Zugang & manueller Login“ aufklappen und das **Client-Secret** der MyOpel-App eintragen
+   (z. B. aus `configs.json` des Projekts *homeassistant-stellantis-vehicles*, Eintrag `MyOpel` → Land).
 3. „Mit MyOpel anmelden“ → Login auf der Opel-Seite. Die App fängt den Redirect
-   `mymopsdk://oauth2redirect/de?code=…` ab und tauscht den Code gegen Tokens.
+   `mymopsdk://oauth2redirect/<land>?code=…` ab und tauscht den Code gegen Tokens.
 4. Falls die Anmeldeseite in der App nicht funktioniert (z. B. Captcha): Anmelde-Link kopieren,
    im PC-Browser mit Entwicklertools öffnen, nach dem Login den `code` aus der Redirect-URL
    in das Feld „Code“ einfügen.
+
+### Client-Secret beim Build hinterlegen (optional)
+
+Die Secrets gehören zur MyOpel-App und liegen deshalb **nicht im Repo**. Wer sie in `local.properties`
+(von Git ignoriert) einträgt, bekommt eine App, in der das Secret schon vorbelegt ist:
+
+```properties
+# für Client-ID 07364655-93cb-4194-8158-6b035ac2c24c (die meisten Länder, u. a. DE/AT/CH)
+myopel.clientSecret=…
+# für Client-ID a009239a-ed2a-49f9-9e6f-3f59703d469d (EE, LT, LV, MT, NZ, TW)
+myopel.clientSecret.alt=…
+```
+
+Ein in der App selbst eingetragenes Secret hat Vorrang, z. B. falls Opel es einmal ändert.
 
 Tokens und Secret liegen mit einem Android-Keystore-Schlüssel verschlüsselt auf dem Gerät.
 Das Passwort speichert die App nicht.

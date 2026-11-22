@@ -318,7 +318,7 @@ class RemoteControl(
 
     private fun apiUrl(path: String): HttpUrl = ("https://api.groupe-psa.com$path").toHttpUrl().newBuilder()
         .addQueryParameter("client_id", auth.clientId)
-        .addQueryParameter("locale", ApiConfig.LOCALE)
+        .addQueryParameter("locale", auth.locale)
         .build()
 
     /** HTTP-Aufruf mit den Headern der MyOpel-App. post == null → GET. */

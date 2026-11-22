@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Client-Secrets der MyOpel-App kommen aus local.properties (nicht im Repo).
+// Fehlen sie, bleibt das Feld in der App leer und das Secret wird wie bisher von Hand eingetragen.
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun secretField(key: String): String =
+    "\"" + localProps.getProperty(key, "").trim().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
     namespace = "com.astraconnect.app"
@@ -14,6 +24,9 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField("String", "MYOPEL_SECRET", secretField("myopel.clientSecret"))
+        buildConfigField("String", "MYOPEL_SECRET_ALT", secretField("myopel.clientSecret.alt"))
     }
 
     buildTypes {
@@ -31,6 +44,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

@@ -7,6 +7,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +31,8 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -72,7 +76,9 @@ fun LoginScreen(vm: AppViewModel) {
         return
     }
 
+    var country by rememberSaveable { mutableStateOf(vm.auth.country) }
     var clientId by rememberSaveable { mutableStateOf(vm.auth.clientId) }
+    val market = ApiConfig.market(country)
     var secret by rememberSaveable { mutableStateOf(vm.auth.clientSecret) }
     var showSecret by remember { mutableStateOf(false) }
     var advanced by rememberSaveable { mutableStateOf(vm.auth.clientSecret.isBlank()) }
@@ -94,12 +100,28 @@ fun LoginScreen(vm: AppViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            CountryPicker(
+                selected = market,
+                enabled = !ui.loggingIn,
+                onSelect = { m ->
+                    // Client-ID und Secret nur mitziehen, wenn sie nicht von Hand geändert wurden.
+                    if (clientId.isBlank() || ApiConfig.isMarketClientId(clientId.trim())) {
+                        if (secret.isBlank() || secret.trim() == ApiConfig.builtInSecret(clientId)) {
+                            secret = ApiConfig.builtInSecret(m.clientId)
+                        }
+                        clientId = m.clientId
+                        if (secret.isBlank()) advanced = true
+                    }
+                    country = m.code
+                },
+            )
+
             if (ui.loggingIn) LinearProgressIndicator(Modifier.fillMaxWidth())
             ui.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             Button(
                 onClick = {
-                    vm.saveClientConfig(clientId, secret)
+                    vm.saveClientConfig(country, clientId, secret)
                     if (secret.isBlank()) { advanced = true; vm.showError("Bitte zuerst das Client-Secret eintragen.") }
                     else { vm.showError(null); showWeb = true }
                 },
@@ -115,8 +137,11 @@ fun LoginScreen(vm: AppViewModel) {
             if (advanced) {
                 Text(
                     "Die App spricht dieselbe Stellantis-API an wie die MyOpel-App. Dafür werden Client-ID und " +
-                        "Client-Secret der MyOpel-App (Markt DE) benötigt. Diese findest du z. B. in der Datei configs.json " +
-                        "des Open-Source-Projekts „homeassistant-stellantis-vehicles“ (Eintrag MyOpel → DE).",
+                        "Client-Secret der MyOpel-App für dein Land benötigt. Diese findest du z. B. in der Datei configs.json " +
+                        "des Open-Source-Projekts „homeassistant-stellantis-vehicles“ (Eintrag MyOpel → ${market.code}). " +
+                        "Die Client-ID wird beim Länderwechsel automatisch angepasst – das Secret muss zur Client-ID passen." +
+                        if (ApiConfig.builtInSecret(clientId).isNotBlank())
+                            "\nDas Secret ist bereits in der App hinterlegt; ein eigener Eintrag hat Vorrang." else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -140,13 +165,13 @@ fun LoginScreen(vm: AppViewModel) {
                 Text("Manueller Login (falls die Anmeldeseite in der App hakt)", fontWeight = FontWeight.SemiBold)
                 Text(
                     "1. Link kopieren und im Browser (am PC mit geöffneten Entwicklertools → Netzwerk) öffnen.\n" +
-                        "2. Einloggen. Der Browser versucht danach „${ApiConfig.REDIRECT_URI}?code=…“ zu öffnen.\n" +
+                        "2. Einloggen. Der Browser versucht danach „${market.redirectUri}?code=…“ zu öffnen.\n" +
                         "3. Den Wert hinter „code=“ hier einfügen.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedButton(onClick = {
-                    vm.saveClientConfig(clientId, secret)
+                    vm.saveClientConfig(country, clientId, secret)
                     clipboard.setText(AnnotatedString(vm.auth.authorizeUrl()))
                 }) { Text("Anmelde-Link kopieren") }
                 OutlinedTextField(
@@ -155,7 +180,7 @@ fun LoginScreen(vm: AppViewModel) {
                 )
                 Button(
                     onClick = {
-                        vm.saveClientConfig(clientId, secret)
+                        vm.saveClientConfig(country, clientId, secret)
                         val code = manualCode.substringAfter("code=").substringBefore("&").trim()
                         vm.onAuthCode(code)
                     },
@@ -219,3 +244,44 @@ private fun OAuthWebScreen(url: String, onCode: (String) -> Unit, onError: (Stri
         }
     }
 }
+
+/** Auswahl des MyOpel-Markts. Der Login-Server ist überall derselbe, Land bestimmt Locale/Redirect/Client-ID. */
+@Composable
+private fun CountryPicker(selected: ApiConfig.Market, enabled: Boolean, onSelect: (ApiConfig.Market) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = "${flag(selected.code)}  ${selected.name}",
+            onValueChange = {},
+            readOnly = true,
+            enabled = enabled,
+            label = { Text("Land deines MyOpel-Kontos") },
+            trailingIcon = { Icon(if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        // Unsichtbare Fläche über dem Feld: ein readOnly-Textfeld schluckt sonst den Klick.
+        Box(Modifier.matchParentSize().clickable(enabled = enabled) { open = true })
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            modifier = Modifier.heightIn(max = 420.dp),
+        ) {
+            ApiConfig.MARKETS.forEach { m ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            "${flag(m.code)}  ${m.name}",
+                            fontWeight = if (m.code == selected.code) FontWeight.Bold else null,
+                        )
+                    },
+                    onClick = { open = false; onSelect(m) },
+                )
+            }
+        }
+    }
+}
+
+/** Flaggen-Emoji aus dem ISO-Ländercode (zwei Regional-Indicator-Zeichen). */
+private fun flag(code: String): String =
+    code.uppercase().map { String(Character.toChars(0x1F1E6 + (it - 'A'))) }.joinToString("")

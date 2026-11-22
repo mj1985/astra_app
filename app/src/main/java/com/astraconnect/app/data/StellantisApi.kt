@@ -82,7 +82,7 @@ class StellantisApi(private val auth: AuthRepository, private val http: OkHttpCl
         ApiConfig.API_BASE.toHttpUrl().newBuilder().apply {
             segments.forEach { addPathSegment(it) }
             addQueryParameter("client_id", auth.clientId)
-            addQueryParameter("locale", ApiConfig.LOCALE)
+            addQueryParameter("locale", auth.locale)
         }.build()
 
     private suspend fun get(url: HttpUrl, retried: Boolean = false): JSONObject {

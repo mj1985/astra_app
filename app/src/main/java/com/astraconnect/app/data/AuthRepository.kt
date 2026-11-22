@@ -17,7 +17,7 @@ class AuthExpiredException(message: String) : Exception(message)
 /**
  * OAuth2 (Authorization-Code-Flow) gegen das Opel/Stellantis-Login.
  * Das Passwort berührt die App nie direkt – der Login passiert im Web-Formular von Opel,
- * die App fängt nur den Redirect `mymopsdk://oauth2redirect/de?code=…` ab.
+ * die App fängt nur den Redirect `mymopsdk://oauth2redirect/<land>?code=…` ab.
  */
 class AuthRepository(private val store: SecureStore, private val http: OkHttpClient) {
 
@@ -26,13 +26,30 @@ class AuthRepository(private val store: SecureStore, private val http: OkHttpCli
     // es dabei aus, der zweite Aufruf scheiterte mit invalid_grant und die App meldete sich ab.
     private val mutex get() = GLOBAL_MUTEX
 
+    /** Gewählter MyOpel-Markt (Land). Bestimmt Locale, Redirect und die Standard-Client-ID. */
+    var country: String
+        get() = market.code
+        set(v) = store.put(K_COUNTRY, ApiConfig.market(v).code)
+
+    val market: ApiConfig.Market get() = ApiConfig.market(store.get(K_COUNTRY))
+    val locale: String get() = market.locale
+    val redirectUri: String get() = market.redirectUri
+
     var clientId: String
-        get() = store.get(K_CLIENT_ID)?.takeIf { it.isNotBlank() } ?: ApiConfig.DEFAULT_CLIENT_ID
+        get() = store.get(K_CLIENT_ID)?.takeIf { it.isNotBlank() } ?: market.clientId
         set(v) = store.put(K_CLIENT_ID, v.trim())
 
+    /**
+     * Selbst eingetragenes Secret, sonst das beim Build hinterlegte. Entspricht der Eintrag dem
+     * hinterlegten Wert, wird nichts gespeichert – so greift ein neues Secret nach einem App-Update.
+     * Setzt voraus, dass [clientId] vorher gesetzt wurde.
+     */
     var clientSecret: String
-        get() = store.get(K_CLIENT_SECRET).orEmpty()
-        set(v) = store.put(K_CLIENT_SECRET, v.trim())
+        get() = store.get(K_CLIENT_SECRET)?.takeIf { it.isNotBlank() } ?: ApiConfig.builtInSecret(clientId)
+        set(v) {
+            val s = v.trim()
+            store.put(K_CLIENT_SECRET, if (s == ApiConfig.builtInSecret(clientId)) "" else s)
+        }
 
     val isLoggedIn: Boolean get() = store.get(K_REFRESH) != null || store.get(K_ACCESS) != null
 
@@ -40,9 +57,9 @@ class AuthRepository(private val store: SecureStore, private val http: OkHttpCli
         "${ApiConfig.OAUTH_BASE}/authorize".toHttpUrl().newBuilder()
             .addQueryParameter("client_id", clientId)
             .addQueryParameter("response_type", "code")
-            .addQueryParameter("redirect_uri", ApiConfig.REDIRECT_URI)
+            .addQueryParameter("redirect_uri", redirectUri)
             .addQueryParameter("scope", "openid profile email")
-            .addQueryParameter("locale", ApiConfig.LOCALE)
+            .addQueryParameter("locale", locale)
             .build().toString()
 
     suspend fun exchangeCode(code: String) = mutex.withLock {
@@ -50,7 +67,7 @@ class AuthRepository(private val store: SecureStore, private val http: OkHttpCli
             FormBody.Builder()
                 .add("grant_type", "authorization_code")
                 .add("code", code.trim())
-                .add("redirect_uri", ApiConfig.REDIRECT_URI)
+                .add("redirect_uri", redirectUri)
                 .build()
         )
     }
@@ -117,6 +134,7 @@ class AuthRepository(private val store: SecureStore, private val http: OkHttpCli
 
     private companion object {
         val GLOBAL_MUTEX = Mutex()
+        const val K_COUNTRY = "country"
         const val K_CLIENT_ID = "client_id"
         const val K_CLIENT_SECRET = "client_secret"
         const val K_ACCESS = "access_token"

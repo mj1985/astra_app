@@ -176,7 +176,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------------ Login
 
-    fun saveClientConfig(clientId: String, clientSecret: String) {
+    fun saveClientConfig(country: String, clientId: String, clientSecret: String) {
+        auth.country = country
         auth.clientId = clientId
         auth.clientSecret = clientSecret
     }
