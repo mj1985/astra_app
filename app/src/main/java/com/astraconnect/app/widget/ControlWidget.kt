@@ -1,6 +1,8 @@
 package com.astraconnect.app.widget
 
 import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -29,6 +31,7 @@ import com.astraconnect.app.data.Vehicle
 import com.astraconnect.app.data.arr
 import com.astraconnect.app.data.obj
 import com.astraconnect.app.data.objects
+import com.astraconnect.app.ui.pct
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -64,7 +67,10 @@ enum class WidgetCommand(
     }
 }
 
-/** Steuer-Widget (5×2): Klimatisierung, Hupe, Licht, Verriegeln – rechts das angeschnittene Fahrzeugbild. */
+/**
+ * Steuer-Widget (5×2): links das angeschnittene Fahrzeugbild mit Akku- und Tankstand,
+ * rechts Klimatisierung, Hupe, Licht, Verriegeln.
+ */
 class ControlWidget : BaseWidget() {
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -85,6 +91,24 @@ class ControlWidget : BaseWidget() {
     companion object {
         const val ACTION_COMMAND = "com.astraconnect.app.WIDGET_COMMAND"
         const val EXTRA_CMD = "cmd"
+
+        /** Anteil der Breite für das Bild – muss zu den layout_weight-Werten in widget_control.xml passen. */
+        private const val CAR_SHARE = 1.25 / (1.25 + 1.0)
+        /** Senkrechter Platz, der nicht fürs Bild bleibt: Innenabstand und Prozentzeile. */
+        private const val CAR_RESERVED_DP = 16 + 22
+
+        /**
+         * Seitenverhältnis der Bildfläche aus der Widget-Größe (Hochformat: minWidth × maxHeight).
+         * Bei mehreren Steuer-Widgets bestimmt das erste; ohne Angabe gilt ein übliches 5×2-Maß.
+         */
+        private fun carBoxAspect(ctx: Context): Double {
+            val mgr = AppWidgetManager.getInstance(ctx)
+            val id = mgr.getAppWidgetIds(ComponentName(ctx, ControlWidget::class.java)).firstOrNull()
+            val o = id?.let { mgr.getAppWidgetOptions(it) }
+            val w = o?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)?.takeIf { it > 0 } ?: 350
+            val h = o?.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)?.takeIf { it > 0 } ?: 180
+            return (w * CAR_SHARE) / (h - CAR_RESERVED_DP).coerceAtLeast(40)
+        }
 
         fun render(src: WidgetSource): RemoteViews {
             val ctx = src.ctx
@@ -116,9 +140,11 @@ class ControlWidget : BaseWidget() {
                 if (locked) "Verriegelt" else "Verriegeln", WidgetCommand.LOCK, false, tint = if (locked) COLOR_OK else null)
 
             CarImage.ensure(ctx, src.prefs)
-            val car = CarImage.load(ctx, src.prefs)
+            val car = CarImage.load(ctx, carBoxAspect(ctx))
             if (car != null) v.setImageViewBitmap(R.id.w_car, car)
-            v.setOnClickPendingIntent(R.id.w_car, src.openApp())
+            v.setTextViewText(R.id.w_car_soc, s?.batteryPercent.pct())
+            v.setTextViewText(R.id.w_car_fuel, s?.fuelPercent.pct())
+            v.setOnClickPendingIntent(R.id.w_car_box, src.openApp())
             return v
         }
     }
@@ -232,17 +258,18 @@ internal fun selectedVehicle(prefs: SharedPreferences): Vehicle? {
 
 /**
  * Fahrzeugbild fürs Steuer-Widget: einmal von Opel laden, Hintergrund freistellen, Ränder abschneiden
- * und als PNG ablegen. Beim Rendern wird es (optional gespiegelt) rechts angeschnitten.
+ * und als PNG ablegen. Die Opel-Bilder zeigen die Front nach rechts – beim Rendern wird links das Heck
+ * so weit abgeschnitten, dass das Bild die linke Widget-Hälfte möglichst ausfüllt.
  */
 internal object CarImage {
     private const val FILE = "widget_car.png"
     private const val K_URL = "widget_car_url"
     private const val K_TRIED = "widget_car_tried"
-    const val K_MIRROR = "widget_car_mirror"
 
-    /** Anteil des Autos, der rechts abgeschnitten wird („leicht angeschnitten“). */
-    private const val CUT = 0.22
-    private const val MAX_HEIGHT = 300
+    /** Vom Auto bleibt mindestens bzw. höchstens dieser Anteil sichtbar (Front immer ganz). */
+    private const val MIN_KEEP = 0.55
+    private const val MAX_KEEP = 0.88
+    private const val MAX_HEIGHT = 480
 
     private fun file(ctx: Context) = File(ctx.filesDir, FILE)
 
@@ -263,18 +290,22 @@ internal object CarImage {
         )
     }
 
-    fun load(ctx: Context, prefs: SharedPreferences): Bitmap? = runCatching {
+    /** Bild passend zum Seitenverhältnis [boxAspect] (Breite/Höhe) der Bildfläche im Widget. */
+    fun load(ctx: Context, boxAspect: Double): Bitmap? = runCatching {
         val src = BitmapFactory.decodeFile(file(ctx).path) ?: return null
-        val keep = (src.width * (1 - CUT)).roundToInt().coerceAtLeast(1)
+        val keepFrac = keepFraction(src.width, src.height, boxAspect)
+        val keep = (src.width * keepFrac).roundToInt().coerceIn(1, src.width)
         val scale = minOf(1f, MAX_HEIGHT.toFloat() / src.height)
-        val m = Matrix().apply {
-            if (prefs.getBoolean(K_MIRROR, false)) postScale(-1f, 1f, src.width / 2f, 0f)
-            postScale(scale, scale)
-        }
-        // Erst spiegeln, dann den rechten Teil abschneiden – die Front zeigt so zu den Tasten
-        val full = Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
-        Bitmap.createBitmap(full, 0, 0, (keep * scale).roundToInt().coerceIn(1, full.width), full.height)
+        // Links (Heck) abschneiden – die Front zeigt nach rechts zu den Tasten
+        val m = Matrix().apply { postScale(scale, scale) }
+        Bitmap.createBitmap(src, src.width - keep, 0, keep, src.height, m, true)
     }.getOrNull()
+
+    /** Sichtbarer Anteil des Autos, damit das Bild die Fläche [boxAspect] füllt. */
+    internal fun keepFraction(width: Int, height: Int, boxAspect: Double): Double {
+        if (width <= 0 || height <= 0 || boxAspect <= 0) return MAX_KEEP
+        return (boxAspect * height / width).coerceIn(MIN_KEEP, MAX_KEEP)
+    }
 
     suspend fun download(ctx: Context) = withContext(Dispatchers.IO) {
         val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)

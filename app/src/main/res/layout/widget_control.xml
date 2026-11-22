@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Steuer-Widget: Klima, Hupe, Licht, Verriegeln – rechts das Fahrzeugbild, am Rand angeschnitten -->
+<!-- Steuer-Widget: links das Fahrzeugbild (am Heck angeschnitten, Front zu den Tasten) mit Akku-/Tankstand,
+     rechts Klima, Hupe, Licht, Verriegeln -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@android:id/background"
     android:layout_width="match_parent"
@@ -10,13 +11,79 @@
     android:orientation="horizontal">
 
     <LinearLayout
+        android:id="@+id/w_car_box"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1.25"
+        android:gravity="start|center_vertical"
+        android:orientation="vertical"
+        android:paddingVertical="8dp">
+
+        <!-- Bild ist passend zur Widget-Größe links beschnitten und liegt bündig am Widget-Rand.
+             wrap_content + adjustViewBounds: bei voller Höhe bleibt es links bündig,
+             bei voller Breite wird es senkrecht zentriert. -->
+        <ImageView
+            android:id="@+id/w_car"
+            android:layout_width="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:adjustViewBounds="true"
+            android:contentDescription="Fahrzeug"
+            android:scaleType="fitCenter" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp">
+
+            <ImageView
+                android:layout_width="13dp"
+                android:layout_height="13dp"
+                android:contentDescription="Akku"
+                android:src="@drawable/ic_w_bolt"
+                android:tint="#FFF7FF14" />
+
+            <TextView
+                android:id="@+id/w_car_soc"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="2dp"
+                android:maxLines="1"
+                android:text="–"
+                android:textColor="#FFE6E6E6"
+                android:textSize="12sp" />
+
+            <ImageView
+                android:layout_width="13dp"
+                android:layout_height="13dp"
+                android:layout_marginStart="12dp"
+                android:contentDescription="Tank"
+                android:src="@drawable/ic_w_fuel"
+                android:tint="#FFFFB74D" />
+
+            <TextView
+                android:id="@+id/w_car_fuel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:maxLines="1"
+                android:text="–"
+                android:textColor="#FFE6E6E6"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:gravity="center"
         android:orientation="vertical"
         android:paddingVertical="8dp"
-        android:paddingStart="10dp">
+        android:paddingEnd="10dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -146,16 +213,4 @@
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
-
-    <!-- Bild ist bereits rechts beschnitten und liegt bündig am Widget-Rand -->
-    <ImageView
-        android:id="@+id/w_car"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical"
-        android:layout_marginStart="6dp"
-        android:layout_weight="1.15"
-        android:adjustViewBounds="true"
-        android:contentDescription="Fahrzeug"
-        android:scaleType="fitEnd" />
 </LinearLayout>

@@ -34,7 +34,7 @@ Stellantis Connected-Car-API v4 – dieselbe Schnittstelle, die auch die MyOpel-
   Anmeldung abgelaufen
 - **Homescreen-Widgets:**
   - *Laden:* Akkustand mit Balken, Ladestatus mit Restladezeit und Fertig-Uhrzeit, Reichweite elektrisch und gesamt (inkl. Benzin)
-  - *Steuerung (5×2):* Klimatisierung an/aus, Hupe, Lichtsignal, Verriegeln – rechts das Fahrzeugbild, am Rand angeschnitten
+  - *Steuerung (5×2):* links das Fahrzeugbild (am Heck angeschnitten) mit Akku- und Tankstand, rechts Klimatisierung an/aus, Hupe, Lichtsignal, Verriegeln
     (Tasten brauchen die eingerichtete Fernsteuerung; Bild spiegeln unter Einstellungen → Widgets)
   - *Reichweite (2×1):* Akku- und Tankstand mit Reichweite; ab 2 Zeilen Höhe zusätzlich die Gesamtreichweite
   - *Letzte Fahrt (4×1):* Strecke, Dauer, Benzin- und Stromverbrauch (gesamt und pro 100 km); ab 2 Zeilen ausführlicher
