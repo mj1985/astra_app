@@ -35,9 +35,9 @@ data class MonthStats(
     val month: YearMonth,
     val trips: Int,
     val km: Double,
-    /** Fahrten ganz ohne Benzin. */
+    /** Fahrten ganz ohne Kraftstoff. */
     val kmElectric: Double,
-    /** Fahrten, bei denen Benzin verbraucht wurde. */
+    /** Fahrten, bei denen Kraftstoff verbraucht wurde. */
     val kmFuel: Double,
     /** Fahrten ohne Verbrauchsangabe. */
     val kmUnknown: Double,
@@ -47,15 +47,18 @@ data class MonthStats(
     val kwh: Double,
     val costFuel: Double,
     val costPower: Double,
+    /** km der Fahrten mit berechnetem Akku-Verbrauch (Bezugsgröße für kWh/100 km). */
+    val kmWithKwh: Double = 0.0,
 ) {
     val cost get() = costFuel + costPower
     val avgFuel: Double? get() = if (kmWithFuelData > 1) fuelLiters / kmWithFuelData * 100 else null
+    val avgKwh: Double? get() = if (kmWithKwh > 1) kwh / kmWithKwh * 100 else null
     val electricShare: Double? get() = (kmElectric + kmFuel).takeIf { it > 0 }?.let { kmElectric / it }
 }
 
 object History {
 
-    /** Fahrt rein elektrisch (true), mit Benzin (false) oder unbekannt (null). */
+    /** Fahrt rein elektrisch (true), mit Kraftstoff (false) oder unbekannt (null). */
     fun isElectric(t: Trip): Boolean? = t.fuelLiters?.let { it < 0.05 }
 
     /** Kosten einer Fahrt mit festen Preisen; null, wenn weder Kraftstoff noch Akku-Verbrauch bekannt ist. */
@@ -86,6 +89,7 @@ object History {
                 kwh = list.sumOf { battery[it.key]?.kwh ?: 0.0 },
                 costFuel = list.sumOf { costs.fuelCost(it) ?: 0.0 },
                 costPower = list.sumOf { costs.powerCost(it, battery[it.key]) ?: 0.0 },
+                kmWithKwh = km { battery[it.key]?.kwh != null },
             )
         }
         .sortedBy { it.month }

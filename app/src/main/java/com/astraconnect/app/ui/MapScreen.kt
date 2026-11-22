@@ -44,6 +44,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.astraconnect.app.AppViewModel
 import com.astraconnect.app.data.LatLon
 import com.astraconnect.app.data.PlaceBook
+import com.astraconnect.app.data.Powertrain
 import com.astraconnect.app.data.Trip
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -76,6 +77,10 @@ private object MapSupport {
 }
 
 private fun LatLon.geo() = GeoPoint(lat, lon)
+
+/** Linienfarbe einer Fahrt: beim Plug-in-Hybrid nach Antrieb (elektrisch/Kraftstoff), sonst die Akzentfarbe. */
+private fun tripColor(t: Trip, pt: Powertrain, accent: Int, electric: Int, fuel: Int): Int =
+    if (pt != Powertrain.PHEV) accent else if (t.fuelLiters?.let { it > 0.05 } == true) fuel else electric
 
 /**
  * Ruhigere Kartenfarben: OSM-Kacheln entsättigt; im Dunkelmodus zusätzlich invertiert und
@@ -231,6 +236,7 @@ fun MapScreen(vm: AppViewModel) {
     var period by rememberSaveable { mutableStateOf(30) }    // Tage, 0 = alles
     val electric = ChartColors.electric.toArgb()
     val fuel = ChartColors.fuel.toArgb()
+    val accent = MaterialTheme.colorScheme.primary.toArgb()
     val since = if (period == 0) null else Instant.now().minus(period.toLong(), ChronoUnit.DAYS)
     val trips = ui.trips.filter { since == null || (it.startedAt?.isAfter(since) == true) }
     val spots = remember(trips) { PlaceBook.hotspots(trips) }
@@ -246,7 +252,7 @@ fun MapScreen(vm: AppViewModel) {
             }
             Text(
                 if (mode == 0) "${trips.size} Fahrten · Linie = Start → Ziel (die API liefert keinen Streckenverlauf). " +
-                    "Blau = rein elektrisch, Orange = mit Benzin."
+                    (if (ui.powertrain == Powertrain.PHEV) "Blau = rein elektrisch, Orange = mit Kraftstoff." else "")
                 else "${spots.size} Orte · Kreisgröße = Anzahl der Besuche (Start + Ziel).",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -261,7 +267,7 @@ fun MapScreen(vm: AppViewModel) {
                     val b = t.endPos?.geo() ?: return@forEach
                     map.overlays += Polyline(map).apply {
                         setPoints(listOf(a, b))
-                        outlinePaint.color = if (t.fuelLiters?.let { it > 0.05 } == true) fuel else electric
+                        outlinePaint.color = tripColor(t, ui.powertrain, accent, electric, fuel)
                         outlinePaint.strokeWidth = 5f
                         outlinePaint.alpha = 170
                         title = "${t.startedAt.dateTime()} · ${t.distanceKm.km(1)}"
@@ -274,8 +280,8 @@ fun MapScreen(vm: AppViewModel) {
                     val r = 60.0 + 340.0 * sqrt(s.visits / maxVisits)
                     map.overlays += Polygon(map).apply {
                         points = Polygon.pointsAsCircle(s.pos.geo(), r)
-                        fillPaint.color = AColor.argb(90, AColor.red(electric), AColor.green(electric), AColor.blue(electric))
-                        outlinePaint.color = electric
+                        fillPaint.color = AColor.argb(90, AColor.red(accent), AColor.green(accent), AColor.blue(accent))
+                        outlinePaint.color = accent
                         outlinePaint.strokeWidth = 2f
                         title = "${s.visits} Besuche" + (s.address?.let { "\n$it" } ?: "")
                     }
@@ -291,11 +297,11 @@ fun MapScreen(vm: AppViewModel) {
 
 /** Kleine, nicht bedienbare Karte mit Start- und Zielpunkt einer Fahrt. */
 @Composable
-fun TripMiniMap(t: Trip, height: Dp = 180.dp) {
+fun TripMiniMap(t: Trip, powertrain: Powertrain, height: Dp = 180.dp) {
     val a = t.startPos?.geo()
     val b = t.endPos?.geo()
     if (a == null && b == null) return
-    val color = (if (t.fuelLiters?.let { it > 0.05 } == true) ChartColors.fuel else ChartColors.electric).toArgb()
+    val color = tripColor(t, powertrain, MaterialTheme.colorScheme.primary.toArgb(), ChartColors.electric.toArgb(), ChartColors.fuel.toArgb())
     Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(14.dp))) {
         OsmMap(Modifier.fillMaxSize(), interactive = false) { map, icons ->
             val pts = listOfNotNull(a, b)

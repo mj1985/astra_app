@@ -94,8 +94,8 @@ fun ServiceScreen(vm: AppViewModel) {
             item {
                 SectionCard("Kilometer", Icons.Filled.Speed) {
                     InfoRow("Kilometerstand", s.mileageKm.km())
-                    InfoRow("Reichweite elektrisch", s.electricRangeKm.km())
-                    InfoRow("Reichweite Benzin", s.fuelRangeKm.km())
+                    if (vm.ui.powertrain.hasBattery) InfoRow("Reichweite elektrisch", s.electricRangeKm.km())
+                    if (vm.ui.powertrain.hasFuel) InfoRow("Reichweite Kraftstoff", s.fuelRangeKm.km())
                 }
             }
         }

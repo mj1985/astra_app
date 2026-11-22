@@ -72,6 +72,7 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/w_fuel_col"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -92,12 +93,13 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:maxLines="1"
-                android:text="Benzin"
+                android:text="Kraftstoff"
                 android:textColor="#FFB0B0B0"
                 android:textSize="10sp" />
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/w_kwh_col"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"

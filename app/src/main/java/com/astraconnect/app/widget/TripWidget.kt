@@ -1,5 +1,6 @@
 package com.astraconnect.app.widget
 
+import android.view.View
 import android.widget.RemoteViews
 import com.astraconnect.app.R
 import com.astraconnect.app.data.VehicleProfile
@@ -18,7 +19,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Fahrt-Widget: letzte Fahrt mit Strecke, Benzin- und (berechnetem) Stromverbrauch. */
+/** Fahrt-Widget: letzte Fahrt mit Strecke, Kraftstoff- und (berechnetem) Stromverbrauch – je nach Antrieb. */
 class TripWidget : BaseWidget() {
     companion object {
         private val dayFormat = DateTimeFormatter.ofPattern("EE dd.MM.", Locale.GERMANY).withZone(ZoneId.systemDefault())
@@ -42,6 +43,10 @@ class TripWidget : BaseWidget() {
 
         private fun fill(src: WidgetSource, v: RemoteViews, t: Trip?, use: BatteryUse?, places: List<Place>, compact: Boolean): RemoteViews {
             v.setOnClickPendingIntent(R.id.widget_root, src.openApp())
+            // Nur die Verbrauchsspalten, die zum Antrieb passen
+            val pt = src.profile.powertrain
+            v.setViewVisibility(R.id.w_fuel_col, if (pt.hasFuel) View.VISIBLE else View.GONE)
+            v.setViewVisibility(R.id.w_kwh_col, if (pt.hasBattery) View.VISIBLE else View.GONE)
             if (t == null) return v
 
             v.setTextViewText(
@@ -83,10 +88,10 @@ class TripWidget : BaseWidget() {
                 ?: "?"
 
         internal fun fuelText(t: Trip, dist: Double?, compact: Boolean = false): Pair<String, String> {
-            val liters = t.fuelLiters ?: return "–" to "Benzin"
+            val liters = t.fuelLiters ?: return "–" to "Kraftstoff"
             if (liters < 0.005) return "0 l" to "rein elektrisch"
             val per100 = t.avgFuel ?: dist?.takeIf { it > 0.5 }?.let { liters / it * 100 }
-            return liters.num(2, "l") to (per100?.let { per100Text(it, "l", compact) } ?: "Benzin")
+            return liters.num(2, "l") to (per100?.let { per100Text(it, "l", compact) } ?: "Kraftstoff")
         }
 
         internal fun powerText(t: Trip, use: BatteryUse?, dist: Double?, compact: Boolean = false): Pair<String, String> {

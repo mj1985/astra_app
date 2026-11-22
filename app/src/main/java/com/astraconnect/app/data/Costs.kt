@@ -67,7 +67,7 @@ data class FuelRow(val at: Instant, val refuel: Refuel?, val entry: FuelEntry?) 
 }
 
 /**
- * Preise über die Zeit: Benzin nach dem zuletzt eingetragenen Tankpreis, Strom nach den Kosten
+ * Preise über die Zeit: Kraftstoff nach dem zuletzt eingetragenen Tankpreis, Strom nach den Kosten
  * des letzten Ladevorgangs vor der Fahrt. Fehlt beides, gelten die Standardpreise.
  */
 class CostModel(

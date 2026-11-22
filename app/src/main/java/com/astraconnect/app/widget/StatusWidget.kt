@@ -16,7 +16,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * Lade-Widget: Akkustand, Ladestatus mit Restladezeit und Reichweite (elektrisch + gesamt inkl. Benzin).
+ * Lade-Widget: Akkustand, Ladestatus mit Restladezeit und Reichweite (elektrisch + gesamt inkl. Kraftstoff); beim Verbrenner ein Hinweis.
  * Der Klassenname stammt vom früheren Status-Widget und bleibt, damit platzierte Widgets erhalten bleiben.
  */
 class StatusWidget : BaseWidget() {

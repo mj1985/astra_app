@@ -109,7 +109,7 @@ fun TripLogScreen(vm: AppViewModel) {
                     val send = Intent(Intent.ACTION_SEND).apply {
                         type = "text/csv"
                         putExtra(Intent.EXTRA_STREAM, uri)
-                        putExtra(Intent.EXTRA_SUBJECT, "Fahrtenbuch Opel Astra")
+                        putExtra(Intent.EXTRA_SUBJECT, "Fahrtenbuch ${ui.vehicleName}")
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     ctx.startActivity(Intent.createChooser(send, "Fahrtenbuch exportieren"))
@@ -307,7 +307,7 @@ private fun TripSheet(t: Trip, b: BatteryUse?, capacityKwh: Double, vm: AppViewM
             item {
                 Text("Fahrt vom ${t.startedAt.dateLong()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                TripMiniMap(t)
+                TripMiniMap(t, vm.ui.powertrain)
                 Spacer(Modifier.height(8.dp))
                 InfoRow("Abfahrt", t.startedAt.dateTime())
                 InfoRow("Ankunft", t.stoppedAt.dateTime())

@@ -274,7 +274,7 @@ fun FuelScreen(vm: AppViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SectionCard("Aktueller Benzinpreis", Icons.Filled.LocalGasStation) {
+            SectionCard("Aktueller Kraftstoffpreis", Icons.Filled.LocalGasStation) {
                 val last = ui.fuelEntries.maxByOrNull { it.at }
                 InfoRow(
                     if (last != null) "Getankt am ${last.at.dateLong()}" else "Standardpreis (Einstellungen)",

@@ -67,7 +67,7 @@ fun DoorsScreen(vm: AppViewModel) {
                         s.windows.forEach { OpeningRow(it) }
                     } else {
                         Text(
-                            "Dein Astra übermittelt aktuell keinen Fensterstatus an die Opel-API. " +
+                            "Dein Auto übermittelt aktuell keinen Fensterstatus an die Opel-API. " +
                                 "Sobald der Server Fensterdaten liefert, erscheinen sie hier automatisch.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

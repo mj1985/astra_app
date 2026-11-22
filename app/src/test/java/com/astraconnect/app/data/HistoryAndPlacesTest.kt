@@ -136,4 +136,18 @@ class HistoryAndPlacesTest {
         assertEquals(1, s.size)          // Zuhause ist schon benannt
         assertEquals(4, s.single().visits)
     }
+
+    // ------------------------------------------------------------------ Stromverbrauch pro 100 km
+
+    @Test
+    fun monthly_avgKwhOnlyOverTripsWithCalculatedUse() {
+        val trips = listOf(
+            trip("a", at(0), 50.0, 0.0),
+            trip("b", at(120), 30.0, 0.0), // ohne Messpunkte → zählt nicht zum Durchschnitt
+        )
+        val battery = mapOf("a" to BatteryUse(80.0, 60.0, 8.0, shared = false, note = null))
+        val m = History.monthly(trips, battery, Prices(1.8, 0.3, 10.0), ZoneOffset.UTC).single()
+        assertEquals(50.0, m.kmWithKwh, 1e-9)
+        assertEquals(16.0, m.avgKwh!!, 1e-9) // 8 kWh auf 50 km
+    }
 }

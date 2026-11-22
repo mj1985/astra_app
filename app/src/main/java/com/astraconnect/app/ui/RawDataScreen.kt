@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.astraconnect.app.AppViewModel
 
-/** Zeigt die unveränderten API-Antworten – hilfreich, um weitere Felder deines Astra zu entdecken. */
+/** Zeigt die unveränderten API-Antworten – hilfreich, um weitere Felder deines Autos zu entdecken. */
 @Composable
 fun RawDataScreen(vm: AppViewModel) {
     val tabs = listOf("Status", "Wartung", "Fahrzeuge")

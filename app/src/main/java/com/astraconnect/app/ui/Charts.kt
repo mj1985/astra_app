@@ -54,7 +54,7 @@ import kotlin.math.pow
 
 /**
  * Feste Diagrammfarben (Kategorie-Slots 1 und 2 der geprüften Referenzpalette, je Modus eigene
- * Stufe). Die Zuordnung ist überall gleich: Strom = Blau, Benzin = Orange.
+ * Stufe). Die Zuordnung ist überall gleich: Strom = Blau, Kraftstoff = Orange.
  */
 object ChartColors {
     val electric: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF3987E5) else Color(0xFF2A78D6)

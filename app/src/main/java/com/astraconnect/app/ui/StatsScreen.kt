@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.astraconnect.app.AppViewModel
 import com.astraconnect.app.data.History
 import com.astraconnect.app.data.MonthStats
+import com.astraconnect.app.data.Powertrain
 import com.astraconnect.app.data.TripCategory
 import java.time.Instant
 import java.time.YearMonth
@@ -102,18 +103,28 @@ fun StatsScreen(vm: AppViewModel) {
 
 private fun overview(scope: androidx.compose.foundation.lazy.LazyListScope, vm: AppViewModel, months: List<MonthStats>, trips: List<com.astraconnect.app.data.Trip>) = with(scope) {
     val ui = vm.ui
+    val pt = ui.powertrain
     val km = months.sumOf { it.km }
     val el = months.sumOf { it.kmElectric }
     val fu = months.sumOf { it.kmFuel }
     val cost = months.sumOf { it.cost }
     val labels = months.map { monthShort.format(it.month) }
     val long = months.map { monthLong.format(it.month) }
+    // Durchschnitt über den ganzen Zeitraum
+    val kmFuelData = months.sumOf { it.kmWithFuelData }
+    val avgFuel = if (kmFuelData > 1) months.sumOf { it.fuelLiters } / kmFuelData * 100 else null
+    val kmKwh = months.sumOf { it.kmWithKwh }
+    val avgKwh = if (kmKwh > 1) months.sumOf { it.kwh } / kmKwh * 100 else null
 
     item {
         SectionCard("Kennzahlen", Icons.Filled.BarChart) {
             Row(Modifier.fillMaxWidth()) {
                 BigStat(km.km(), "gefahren", Modifier.weight(1f))
-                BigStat(if (el + fu > 0) (el / (el + fu) * 100).pct() else "–", "rein elektrisch (km)", Modifier.weight(1f))
+                when (pt) {
+                    Powertrain.PHEV -> BigStat(if (el + fu > 0) (el / (el + fu) * 100).pct() else "–", "rein elektrisch (km)", Modifier.weight(1f))
+                    Powertrain.BEV -> BigStat(avgKwh.num(1, "kWh"), "Ø pro 100 km (berechnet)", Modifier.weight(1f))
+                    Powertrain.ICE -> BigStat(avgFuel.num(1, "l"), "Ø pro 100 km", Modifier.weight(1f))
+                }
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth()) {
@@ -121,8 +132,13 @@ private fun overview(scope: androidx.compose.foundation.lazy.LazyListScope, vm: 
                 BigStat(if (km > 0) (cost / km * 100).eur() else "–", "pro 100 km", Modifier.weight(1f))
             }
             Text(
-                "Kosten = Benzin × Literpreis des letzten Tankvorgangs davor + berechneter Akku-Verbrauch × Preis der letzten Ladung davor. " +
-                    "Ohne Eintrag gelten die Standardpreise (${ui.prices.fuelPerLiter.num(2, "€/l")}, ${ui.prices.powerPerKwh.num(2, "€/kWh")} + ${ui.prices.chargeLossPct.num(0, "%")} Ladeverluste).",
+                "Kosten = " + listOfNotNull(
+                    if (pt.hasFuel) "Kraftstoff × Literpreis des letzten Tankvorgangs davor" else null,
+                    if (pt.hasBattery) "berechneter Akku-Verbrauch × Preis der letzten Ladung davor" else null,
+                ).joinToString(" + ") + ". Ohne Eintrag gelten die Standardpreise (" + listOfNotNull(
+                    if (pt.hasFuel) ui.prices.fuelPerLiter.num(2, "€/l") else null,
+                    if (pt.hasBattery) "${ui.prices.powerPerKwh.num(2, "€/kWh")} + ${ui.prices.chargeLossPct.num(0, "%")} Ladeverluste" else null,
+                ).joinToString(", ") + ").",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
@@ -130,35 +146,53 @@ private fun overview(scope: androidx.compose.foundation.lazy.LazyListScope, vm: 
     }
     item {
         SectionCard("Kilometer pro Monat", Icons.Filled.BarChart) {
-            val series = listOfNotNull(
-                ChartSeries("rein elektrisch", ChartColors.electric, months.map { it.kmElectric }),
-                ChartSeries("mit Benzin", ChartColors.fuel, months.map { it.kmFuel }),
-                months.map { it.kmUnknown }.takeIf { v -> v.any { it > 0 } }?.let { ChartSeries("ohne Angabe", ChartColors.unknown, it) },
-            )
-            StackedBarChart(labels, series, "km", longLabels = long)
+            if (pt == Powertrain.PHEV) {
+                val series = listOfNotNull(
+                    ChartSeries("rein elektrisch", ChartColors.electric, months.map { it.kmElectric }),
+                    ChartSeries("mit Kraftstoff", ChartColors.fuel, months.map { it.kmFuel }),
+                    months.map { it.kmUnknown }.takeIf { v -> v.any { it > 0 } }?.let { ChartSeries("ohne Angabe", ChartColors.unknown, it) },
+                )
+                StackedBarChart(labels, series, "km", longLabels = long)
+                Text(
+                    "„Rein elektrisch“ = Fahrten ganz ohne Kraftstoffverbrauch. Fahrten „mit Kraftstoff“ sind oft teilweise elektrisch.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            } else {
+                val color = if (pt == Powertrain.BEV) ChartColors.electric else ChartColors.fuel
+                StackedBarChart(labels, listOf(ChartSeries("Kilometer", color, months.map { it.km })), "km", longLabels = long)
+            }
+        }
+    }
+    if (pt.hasFuel) item {
+        SectionCard("Kraftstoffverbrauch (Ø l/100 km)", Icons.Filled.LocalGasStation) {
+            StackedBarChart(labels, listOf(ChartSeries("Kraftstoff", ChartColors.fuel, months.map { it.avgFuel ?: 0.0 })), "l/100 km", digits = 1, longLabels = long)
+        }
+    }
+    if (pt == Powertrain.BEV) item {
+        SectionCard("Stromverbrauch (Ø kWh/100 km)", Icons.Filled.BatteryChargingFull) {
+            StackedBarChart(labels, listOf(ChartSeries("Strom", ChartColors.electric, months.map { it.avgKwh ?: 0.0 })), "kWh/100 km", digits = 1, longLabels = long)
             Text(
-                "„Rein elektrisch“ = Fahrten ganz ohne Benzinverbrauch. Fahrten „mit Benzin“ sind oft teilweise elektrisch.",
+                "Berechnet aus dem Ladestand vor und nach der Fahrt × ${ui.capacityKwh.num(1, "kWh")} nutzbarer Kapazität.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
     }
     item {
-        SectionCard("Benzinverbrauch (Ø l/100 km)", Icons.Filled.LocalGasStation) {
-            StackedBarChart(labels, listOf(ChartSeries("Benzin", ChartColors.fuel, months.map { it.avgFuel ?: 0.0 })), "l/100 km", digits = 1, longLabels = long)
-        }
-    }
-    item {
         SectionCard("Energiekosten pro Monat", Icons.Filled.Euro) {
             StackedBarChart(
                 labels,
-                listOf(
-                    ChartSeries("Strom", ChartColors.electric, months.map { it.costPower }),
-                    ChartSeries("Benzin", ChartColors.fuel, months.map { it.costFuel }),
+                listOfNotNull(
+                    if (pt.hasBattery) ChartSeries("Strom", ChartColors.electric, months.map { it.costPower }) else null,
+                    if (pt.hasFuel) ChartSeries("Kraftstoff", ChartColors.fuel, months.map { it.costFuel }) else null,
                 ),
                 "€", digits = 2, longLabels = long,
             )
-            val withoutKwh = trips.count { History.isElectric(it) != null && ui.battery[it.key]?.kwh == null }
+            val withoutKwh = if (!pt.hasBattery) 0 else trips.count {
+                // Elektroauto: jede Fahrt braucht Strom; Hybrid: nur Fahrten mit Verbrauchsangabe
+                (pt == Powertrain.BEV || History.isElectric(it) != null) && ui.battery[it.key]?.kwh == null
+            }
             if (withoutKwh > 0) {
                 Text(
                     "Stromkosten nur für Fahrten mit berechnetem Akku-Verbrauch ($withoutKwh Fahrten ohne Messpunkte fehlen).",
@@ -183,18 +217,26 @@ private fun overview(scope: androidx.compose.foundation.lazy.LazyListScope, vm: 
     item {
         // Tabellenansicht – dieselben Zahlen wie in den Diagrammen
         SectionCard("Monatstabelle", Icons.Filled.TableChart) {
-            TableRow(listOf("Monat", "km", "el. %", "Liter", "kWh", "€"), header = true)
+            TableRow(
+                when (pt) {
+                    Powertrain.PHEV -> listOf("Monat", "km", "el. %", "Liter", "kWh", "€")
+                    Powertrain.BEV -> listOf("Monat", "km", "kWh", "kWh/100", "€")
+                    Powertrain.ICE -> listOf("Monat", "km", "Liter", "l/100", "€")
+                },
+                header = true,
+            )
             HorizontalDivider()
             months.reversed().forEach { m ->
+                val month = monthShort.format(m.month) + " " + (m.month.year % 100).toString().padStart(2, '0')
                 TableRow(
-                    listOf(
-                        monthShort.format(m.month) + " " + (m.month.year % 100).toString().padStart(2, '0'),
-                        m.km.num(0),
-                        m.electricShare?.let { (it * 100).num(0) } ?: "–",
-                        m.fuelLiters.num(1),
-                        m.kwh.num(1),
-                        m.cost.num(0),
-                    )
+                    when (pt) {
+                        Powertrain.PHEV -> listOf(
+                            month, m.km.num(0), m.electricShare?.let { (it * 100).num(0) } ?: "–",
+                            m.fuelLiters.num(1), m.kwh.num(1), m.cost.num(0),
+                        )
+                        Powertrain.BEV -> listOf(month, m.km.num(0), m.kwh.num(1), m.avgKwh.num(1), m.cost.num(0))
+                        Powertrain.ICE -> listOf(month, m.km.num(0), m.fuelLiters.num(1), m.avgFuel.num(1), m.cost.num(0))
+                    }
                 )
             }
         }
@@ -229,7 +271,7 @@ private fun reconciliation(scope: androidx.compose.foundation.lazy.LazyListScope
     val elFactors = elPairs.map { it.apiElectricRaw!! / ui.battery[it.key]!!.kwh!! }
     val elMedian = History.median(elFactors)
 
-    item {
+    if (ui.powertrain.hasFuel) item {
         SectionCard("Kraftstoff: Opel-Server ↔ myOpel", Icons.AutoMirrored.Filled.CompareArrows) {
             Text(
                 "Vergleicht den Rohwert der Opel-API mit den Litern aus dem myOpel-Export für dieselbe Fahrt. " +
@@ -238,7 +280,7 @@ private fun reconciliation(scope: androidx.compose.foundation.lazy.LazyListScope
             )
             Spacer(Modifier.height(8.dp))
             if (fuelMedian == null) {
-                Text("Noch keine Fahrt, die vom Server UND aus myOpel stammt und Benzin verbraucht hat.")
+                Text("Noch keine Fahrt, die vom Server UND aus myOpel stammt und Kraftstoff verbraucht hat.")
             } else {
                 InfoRow("Verglichene Fahrten", "${fuelPairs.size}")
                 InfoRow(
@@ -262,7 +304,7 @@ private fun reconciliation(scope: androidx.compose.foundation.lazy.LazyListScope
             }
         }
     }
-    item {
+    if (ui.powertrain.hasBattery) item {
         SectionCard("Strom: Opel-Server ↔ berechneter Akku-Verbrauch", Icons.AutoMirrored.Filled.CompareArrows) {
             Text(
                 "Vergleicht den Strom-Rohwert der API mit dem aus dem Ladestand berechneten Verbrauch.",
