@@ -2,7 +2,13 @@ package com.astraconnect.app.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color as AColor
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
+import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -44,10 +50,10 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.CopyrightOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
-import org.osmdroid.views.overlay.TilesOverlay
 import java.io.File
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -71,16 +77,93 @@ private object MapSupport {
 
 private fun LatLon.geo() = GeoPoint(lat, lon)
 
+/**
+ * Ruhigere Kartenfarben: OSM-Kacheln entsättigt; im Dunkelmodus zusätzlich invertiert und
+ * gedämpft, damit die Karte zum dunklen App-Hintergrund passt und Marker hervortreten.
+ */
+private object MapStyle {
+    private fun matrix(dark: Boolean): ColorMatrix {
+        val m = ColorMatrix().apply { setSaturation(if (dark) 0.12f else 0.30f) }
+        val tone = if (dark) {
+            // invertieren und auf ca. 14…218 von 255 stauchen
+            val k = 0.80f; val t = 255f * k + 14f
+            ColorMatrix(floatArrayOf(-k, 0f, 0f, 0f, t, 0f, -k, 0f, 0f, t + 1f, 0f, 0f, -k, 0f, t + 2f, 0f, 0f, 0f, 1f, 0f))
+        } else {
+            val k = 0.90f; val t = 22f
+            ColorMatrix(floatArrayOf(k, 0f, 0f, 0f, t, 0f, k, 0f, 0f, t, 0f, 0f, k, 0f, t, 0f, 0f, 0f, 1f, 0f))
+        }
+        m.postConcat(tone)
+        return m
+    }
+
+    val dark = ColorMatrixColorFilter(matrix(true))
+    val light = ColorMatrixColorFilter(matrix(false))
+}
+
+/** Schlichte Punkt-Marker in der Akzentfarbe der App. */
+class MapIcons(private val ctx: Context, private val accent: Int, private val ring: Int) {
+    private fun dp(v: Float) = v * ctx.resources.displayMetrics.density
+
+    private fun icon(sizeDp: Float, draw: Canvas.(c: Float) -> Unit): BitmapDrawable {
+        val px = dp(sizeDp).toInt().coerceAtLeast(1)
+        val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+        Canvas(bmp).draw(px / 2f)
+        return BitmapDrawable(ctx.resources, bmp)
+    }
+
+    private fun fill(color: Int) = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
+
+    /** Fahrzeug: gefüllter Punkt mit Ring und weichem Hof. */
+    val vehicle: BitmapDrawable by lazy {
+        icon(30f) { c ->
+            drawCircle(c, c, c, fill(AColor.argb(70, AColor.red(accent), AColor.green(accent), AColor.blue(accent))))
+            drawCircle(c, c, dp(7.5f), fill(ring))
+            drawCircle(c, c, dp(5.5f), fill(accent))
+        }
+    }
+
+    /** Ziel bzw. Ende: gefüllter Punkt mit Ring. */
+    val dot: BitmapDrawable by lazy {
+        icon(16f) { c ->
+            drawCircle(c, c, c, fill(ring))
+            drawCircle(c, c, c - dp(2f), fill(accent))
+        }
+    }
+
+    /** Gespeicherter Ort bzw. Start: hohler Ring. */
+    val ringIcon: BitmapDrawable by lazy {
+        icon(16f) { c ->
+            drawCircle(c, c, c, fill(ring))
+            drawCircle(c, c, c - dp(3.5f), Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = accent; style = Paint.Style.STROKE; strokeWidth = dp(2.5f)
+            })
+        }
+    }
+}
+
+private fun MapView.marker(pos: GeoPoint, icon: BitmapDrawable, title: String? = null) {
+    overlays += Marker(this).apply {
+        position = pos
+        this.icon = icon
+        this.title = title
+        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+        if (title == null) setInfoWindow(null)
+    }
+}
+
 /** Kartenansicht mit Lebenszyklus-Anbindung; [update] wird bei jeder Neukomposition aufgerufen. */
 @SuppressLint("ClickableViewAccessibility")
 @Composable
 private fun OsmMap(
     modifier: Modifier,
     interactive: Boolean = true,
-    update: (MapView) -> Unit,
+    update: (MapView, MapIcons) -> Unit,
 ) {
     val ctx = LocalContext.current
     val dark = isSystemInDarkTheme()
+    val accent = MaterialTheme.colorScheme.primary.toArgb()
+    val ring = MaterialTheme.colorScheme.surface.toArgb()
+    val icons = remember(accent, ring) { MapIcons(ctx, accent, ring) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val map = remember {
         MapSupport.init(ctx)
@@ -113,9 +196,17 @@ private fun OsmMap(
         factory = { map },
         modifier = modifier,
         update = { m ->
-            m.overlayManager.tilesOverlay.setColorFilter(if (dark) TilesOverlay.INVERT_COLORS else null)
+            m.overlayManager.tilesOverlay.setColorFilter(if (dark) MapStyle.dark else MapStyle.light)
+            m.overlayManager.tilesOverlay.loadingBackgroundColor = ring
+            m.overlayManager.tilesOverlay.loadingLineColor = ring
             m.overlays.clear()
-            update(m)
+            update(m, icons)
+            // Quellenangabe (OSM-Lizenz)
+            m.overlays += CopyrightOverlay(ctx).apply {
+                setTextColor(if (dark) AColor.argb(150, 255, 255, 255) else AColor.argb(150, 0, 0, 0))
+                setTextSize(9)
+                setAlignRight(true)
+            }
             m.invalidate()
         },
     )
@@ -162,7 +253,7 @@ fun MapScreen(vm: AppViewModel) {
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
-        OsmMap(Modifier.fillMaxSize()) { map ->
+        OsmMap(Modifier.fillMaxSize()) { map, icons ->
             val all = mutableListOf<GeoPoint>()
             if (mode == 0) {
                 trips.forEach { t ->
@@ -191,13 +282,8 @@ fun MapScreen(vm: AppViewModel) {
                     all += s.pos.geo()
                 }
             }
-            ui.places.forEach { p ->
-                map.overlays += Marker(map).apply {
-                    position = p.pos.geo()
-                    title = p.name
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                }
-            }
+            ui.places.forEach { p -> map.marker(p.pos.geo(), icons.ringIcon, p.name) }
+            ui.status?.position?.let { map.marker(it.geo(), icons.vehicle, "Fahrzeug (letzter Standort)") }
             map.fit(all)
         }
     }
@@ -211,16 +297,27 @@ fun TripMiniMap(t: Trip, height: Dp = 180.dp) {
     if (a == null && b == null) return
     val color = (if (t.fuelLiters?.let { it > 0.05 } == true) ChartColors.fuel else ChartColors.electric).toArgb()
     Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(14.dp))) {
-        OsmMap(Modifier.fillMaxSize(), interactive = false) { map ->
+        OsmMap(Modifier.fillMaxSize(), interactive = false) { map, icons ->
             val pts = listOfNotNull(a, b)
             if (a != null && b != null) {
                 map.overlays += Polyline(map).apply {
                     setPoints(pts); outlinePaint.color = color; outlinePaint.strokeWidth = 6f
                 }
             }
-            a?.let { map.overlays += Marker(map).apply { position = it; title = "Start"; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) } }
-            b?.let { map.overlays += Marker(map).apply { position = it; title = "Ziel"; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) } }
+            a?.let { map.marker(it, icons.ringIcon) }
+            b?.let { map.marker(it, icons.dot) }
             map.fit(pts)
+        }
+    }
+}
+
+/** Kleine, nicht bedienbare Karte mit dem Standort des Fahrzeugs. */
+@Composable
+fun PositionMiniMap(pos: LatLon, modifier: Modifier = Modifier, height: Dp = 170.dp) {
+    Box(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(14.dp))) {
+        OsmMap(Modifier.fillMaxSize(), interactive = false) { map, icons ->
+            map.marker(pos.geo(), icons.vehicle)
+            map.fit(listOf(pos.geo()))
         }
     }
 }

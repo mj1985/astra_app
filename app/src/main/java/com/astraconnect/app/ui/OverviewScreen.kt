@@ -48,6 +48,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import android.location.Geocoder
+import com.astraconnect.app.data.LatLon
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -218,7 +224,9 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
             s.position?.let { p ->
                 item {
                     SectionCard("Letzter Standort", Icons.Filled.Place) {
-                        Text(String.format(Locale.US, "%.5f, %.5f", p.lat, p.lon), fontWeight = FontWeight.Medium)
+                        PositionMiniMap(p, Modifier.padding(bottom = 10.dp))
+                        val address = rememberAddress(p)
+                        Text(address ?: String.format(Locale.US, "%.5f, %.5f", p.lat, p.lon), fontWeight = FontWeight.Medium)
                         Text("Stand: ${s.positionAt.dateTime()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(onClick = {
@@ -268,4 +276,25 @@ fun battery12VColor(v: Double?) = when {
     v >= 70 -> Ok
     v >= 50 -> Warn
     else -> Bad
+}
+
+/** Adresse zum Standort (Android-Geocoder), null solange unbekannt oder ohne Geocoder. */
+@Composable
+private fun rememberAddress(p: LatLon): String? {
+    val ctx = LocalContext.current
+    val address by produceState<String?>(null, p) {
+        value = withContext(Dispatchers.IO) {
+            if (!Geocoder.isPresent()) return@withContext null
+            runCatching {
+                @Suppress("DEPRECATION")
+                Geocoder(ctx, Locale.getDefault()).getFromLocation(p.lat, p.lon, 1)?.firstOrNull()?.let { a ->
+                    listOfNotNull(
+                        listOfNotNull(a.thoroughfare, a.subThoroughfare).joinToString(" ").ifBlank { null },
+                        listOfNotNull(a.postalCode, a.locality).joinToString(" ").ifBlank { null },
+                    ).joinToString(", ").ifBlank { a.getAddressLine(0) }
+                }
+            }.getOrNull()
+        }
+    }
+    return address
 }
