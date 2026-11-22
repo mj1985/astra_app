@@ -31,6 +31,7 @@ import com.astraconnect.app.data.AuthRepository
 import com.astraconnect.app.data.BatteryUse
 import com.astraconnect.app.data.EnergyLog
 import com.astraconnect.app.data.LatLon
+import com.astraconnect.app.data.NavTarget
 import com.astraconnect.app.data.RemoteCommand
 import com.astraconnect.app.data.RemoteControl
 import com.astraconnect.app.data.SecureStore
@@ -89,6 +90,11 @@ data class UiState(
     val remoteBusy: Boolean = false,
     val remoteInfo: String? = null,
     val commands: List<CommandEntry> = emptyList(),
+    // Navigationsziel
+    val navSearching: Boolean = false,
+    val navSending: Boolean = false,
+    val navResults: List<NavTarget> = emptyList(),
+    val navInfo: String? = null,
     // Orte & Regeln
     val places: List<Place> = emptyList(),
     val rules: List<CategoryRule> = emptyList(),
@@ -642,6 +648,86 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             } finally {
                 ui = ui.copy(remoteBusy = false)
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Navigationsziel
+
+    /** Sucht Adressen/Orte für ein Navigationsziel (Android-Geocoder). */
+    fun searchDestination(query: String) = viewModelScope.launch {
+        val q = query.trim()
+        if (q.isBlank()) return@launch
+        ui = ui.copy(navSearching = true, navResults = emptyList(), navInfo = null)
+        val results = withContext(Dispatchers.IO) { geocode(q) }
+        ui = ui.copy(
+            navSearching = false,
+            navResults = results,
+            navInfo = when {
+                !Geocoder.isPresent() -> "Adresssuche ist auf diesem Gerät nicht verfügbar."
+                results.isEmpty() -> "Nichts gefunden für „$q“."
+                else -> null
+            },
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun geocode(q: String): List<NavTarget> {
+        if (!Geocoder.isPresent()) return emptyList()
+        return runCatching {
+            Geocoder(getApplication(), Locale.getDefault()).getFromLocationName(q, 6).orEmpty().map { a ->
+                val name = (0..a.maxAddressLineIndex).mapNotNull { a.getAddressLine(it) }.joinToString(", ")
+                    .ifBlank { listOfNotNull(a.featureName, a.locality).joinToString(", ") }
+                    .ifBlank { "%.5f, %.5f".format(Locale.ROOT, a.latitude, a.longitude) }
+                NavTarget(name, a.latitude, a.longitude)
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun clearDestinationSearch() {
+        ui = ui.copy(navResults = emptyList(), navInfo = null)
+    }
+
+    /** Sendet das Ziel über die Web-API an das Navi des Autos und verfolgt den Status. */
+    fun sendNavigation(target: NavTarget) {
+        val vehicleId = ui.vehicle?.id ?: run {
+            ui = ui.copy(error = "Kein Fahrzeug geladen.")
+            return
+        }
+        val name = "Navigation: ${target.name}"
+        viewModelScope.launch {
+            ui = ui.copy(navSending = true)
+            val localId = "nav-${System.nanoTime()}"
+            fun update(status: String, final: Boolean, success: Boolean) {
+                val entry = CommandEntry(localId, name, Instant.now(), status, final, success)
+                ui = ui.copy(
+                    commands = if (ui.commands.any { it.id == localId })
+                        ui.commands.map { if (it.id == localId) entry.copy(sentAt = it.sentAt) else it }
+                    else listOf(entry) + ui.commands.take(19)
+                )
+            }
+            try {
+                if (api.navigationSupported(vehicleId) == false) {
+                    update("Nicht gesendet: Laut Opel unterstützt dieses Fahrzeug das Senden von Zielen nicht.", true, false)
+                    return@launch
+                }
+                val (cbid, rid) = api.sendNavigation(vehicleId, listOf(target.pos))
+                update("Gesendet …", false, false)
+                ui = ui.copy(navSending = false)
+                // Ergebnis abfragen: bis zu 3 Minuten alle 5 Sekunden.
+                repeat(36) {
+                    delay(5_000)
+                    val s = runCatching { api.navigationState(vehicleId, cbid, rid) }.getOrNull() ?: return@repeat
+                    update(s.label, s.final, s.success)
+                    if (s.final) return@launch
+                }
+                update("Keine Rückmeldung vom Auto. Ist es mit dem Netz verbunden?", true, false)
+            } catch (e: AuthExpiredException) {
+                ui = ui.copy(loggedIn = false, error = e.message)
+            } catch (e: Exception) {
+                update("Nicht gesendet: ${e.message}", true, false)
+            } finally {
+                ui = ui.copy(navSending = false)
             }
         }
     }

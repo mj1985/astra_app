@@ -122,6 +122,8 @@ private fun RemoteSetup(vm: AppViewModel) {
                 ) { Text("2. Aktivieren") }
             }
         }
+        // Läuft über die Web-API und braucht die SMS-Freischaltung nicht.
+        item { NavigationCard(vm, showStatus = true) }
     }
 }
 
@@ -202,6 +204,7 @@ private fun RemoteControls(vm: AppViewModel) {
                 )
             }
         }
+        item { NavigationCard(vm, showStatus = false) }
         if (ui.commands.isNotEmpty()) {
             item { Text("Letzte Befehle", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             items(ui.commands, key = { it.id }) { CommandRow(it) }

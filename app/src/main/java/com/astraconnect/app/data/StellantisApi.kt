@@ -4,13 +4,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
-/** Lesender Zugriff auf die Stellantis Connected-Car-API v4. */
+/** Zugriff auf die Stellantis Connected-Car-API v4 (lesend, plus Navigationsziel senden). */
 class StellantisApi(private val auth: AuthRepository, private val http: OkHttpClient) {
 
     suspend fun vehiclesRaw(): JSONObject = get(url("vehicles"))
@@ -85,26 +87,67 @@ class StellantisApi(private val auth: AuthRepository, private val http: OkHttpCl
             addQueryParameter("locale", auth.locale)
         }.build()
 
-    private suspend fun get(url: HttpUrl, retried: Boolean = false): JSONObject {
+    // ------------------------------------------------------------------ Navigation (Remote über REST)
+
+    /** Unterstützt das Fahrzeug „Ziel an Auto senden“? null = unbekannt (Abfrage nicht möglich). */
+    suspend fun navigationSupported(vehicleId: String): Boolean? = runCatching {
+        Navigation.supported(
+            get(url("vehicles", vehicleId).newBuilder().addQueryParameter("extension", "onboardCapabilities").build())
+        )
+    }.getOrNull()
+
+    /** Sendet ein Ziel (letzter Punkt) samt Zwischenzielen. Liefert Callback-ID und Remote-ID. */
+    suspend fun sendNavigation(vehicleId: String, positions: List<LatLon>): Pair<String, String> {
+        val cbid = remoteCallbackId()
+        val resp = request(
+            url("vehicles", vehicleId, "callbacks", cbid, "remotes"),
+            Navigation.remoteBody(positions),
+            what = "Schritt 2/2 (Ziel senden)",
+        )
+        val rid = Navigation.remoteActionId(resp) ?: throw ApiException("Opel hat keine Auftrags-ID zurückgegeben.")
+        return cbid to rid
+    }
+
+    suspend fun navigationState(vehicleId: String, cbid: String, rid: String): NavState =
+        Navigation.state(get(url("vehicles", vehicleId, "callbacks", cbid, "remotes", rid)))
+
+    /** Eigener Callback für Remote-Befehle – vorhandenen wiederverwenden, sonst anlegen. */
+    private suspend fun remoteCallbackId(): String {
+        runCatching { Navigation.findCallbackId(get(url("callbacks"))) }.getOrNull()?.let { return it }
+        val created = request(url("callbacks"), Navigation.callbackBody(), what = "Schritt 1/2 (Callback anlegen)")
+        return Navigation.createdCallbackId(created) ?: throw ApiException("Opel hat keine Callback-ID zurückgegeben.")
+    }
+
+    private suspend fun get(url: HttpUrl, retried: Boolean = false): JSONObject = request(url, null, retried)
+
+    /** GET (post == null) oder POST mit JSON-Body. */
+    private suspend fun request(url: HttpUrl, post: JSONObject?, retried: Boolean = false, what: String? = null): JSONObject {
         val token = auth.accessToken(forceRefresh = retried)
         val (code, body) = withContext(Dispatchers.IO) {
-            val req = Request.Builder().url(url)
+            val b = Request.Builder().url(url)
                 .header("Authorization", "Bearer $token")
                 .header("x-introspect-realm", ApiConfig.REALM)
                 .header("Accept", "application/hal+json")
-                .build()
-            http.newCall(req).execute().use { it.code to it.body?.string().orEmpty() }
+            if (post != null) b.post(post.toString().toRequestBody("application/json".toMediaType()))
+            http.newCall(b.build()).execute().use { it.code to it.body?.string().orEmpty() }
         }
-        if (code == 401 && !retried) return get(url, retried = true)
+        if (code == 401 && !retried) return request(url, post, retried = true, what = what)
         if (code !in 200..299) {
             val detail = runCatching { JSONObject(body).let { it.optString("message").ifBlank { it.optString("title") } } }
                 .getOrNull().orEmpty()
             throw ApiException(
-                when (code) {
+                when {
+                    what != null && code in setOf(401, 403) ->
+                        "$what: Opel verweigert den Zugriff (HTTP $code). Der MyOpel-Zugang darf diesen Befehl vermutlich nicht nutzen."
+                    what != null && code == 404 -> "$what: Funktion nicht gefunden (HTTP 404)."
+                    what != null && code >= 500 ->
+                        "$what: Opel lehnt ab (HTTP $code). Häufigste Ursache: kein aktives Abo für die vernetzte Navigation."
+                    else -> when (code) {
                     401, 403 -> "Kein Zugriff (HTTP $code). Ggf. neu anmelden."
                     404 -> "Nicht gefunden (HTTP 404)"
                     429 -> "Zu viele Anfragen – bitte später erneut versuchen."
-                    else -> "API-Fehler HTTP $code"
+                    else -> if (what != null) "$what: API-Fehler HTTP $code" else "API-Fehler HTTP $code"
+                    }
                 } + if (detail.isNotBlank()) " – $detail" else "",
                 code
             )
