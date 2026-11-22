@@ -33,36 +33,22 @@ import java.util.Locale
 @Composable
 fun SettingsScreen(vm: AppViewModel) {
     val ui = vm.ui
-    var capacity by remember(ui.capacityKwh) { mutableStateOf(String.format(Locale.GERMANY, "%.1f", ui.capacityKwh)) }
     var confirmClear by remember { mutableStateOf(false) }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { VehicleSettings(vm) }
         item {
-            SectionCard("Akku-Verbrauch im Fahrtenbuch", Icons.Filled.BatteryChargingFull) {
+            SectionCard("Messpunkte", Icons.Filled.BatteryChargingFull) {
                 Text(
-                    "Opel liefert den Stromverbrauch pro Fahrt nicht. Die App berechnet ihn aus dem Ladestand " +
-                        "vor und nach der Fahrt × nutzbarer Akkukapazität. Dafür speichert sie regelmäßig den Ladestand.",
+                    if (ui.powertrain.hasBattery)
+                        "Opel liefert den Stromverbrauch pro Fahrt nicht. Die App berechnet ihn aus dem Ladestand " +
+                            "vor und nach der Fahrt × nutzbarer Akkukapazität. Dafür speichert sie regelmäßig Akku- und Tankstand."
+                    else "Die App speichert regelmäßig den Tankstand – daraus erkennt sie Tankvorgänge.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = capacity, onValueChange = { capacity = it },
-                        label = { Text("Nutzbare Kapazität (kWh)") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Button(onClick = { capacity.replace(',', '.').toDoubleOrNull()?.let(vm::setCapacity) }) { Text("OK") }
-                }
-                Text(
-                    "Astra Plug-in-Hybrid 2022: 12,4 kWh brutto, ca. 10,2 kWh nutzbar.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Ladestand im Hintergrund aufzeichnen (alle 15 Min.)", Modifier.weight(1f))
+                    Text((if (ui.powertrain.hasBattery) "Ladestand" else "Tankstand") + " im Hintergrund aufzeichnen (alle 15 Min.)", Modifier.weight(1f))
                     Switch(checked = ui.backgroundEnabled, onCheckedChange = vm::setBackground)
                 }
                 Text(

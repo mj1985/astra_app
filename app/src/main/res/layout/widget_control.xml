@@ -39,40 +39,58 @@
             android:orientation="horizontal"
             android:paddingStart="14dp">
 
-            <ImageView
-                android:layout_width="13dp"
-                android:layout_height="13dp"
-                android:contentDescription="Akku"
-                android:src="@drawable/ic_w_bolt"
-                android:tint="#FFF7FF14" />
-
-            <TextView
-                android:id="@+id/w_car_soc"
+            <!-- Akku (ausgeblendet ohne Antriebsbatterie); der Abstand zum Tank hängt an dieser Gruppe -->
+            <LinearLayout
+                android:id="@+id/w_car_soc_group"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="2dp"
-                android:maxLines="1"
-                android:text="–"
-                android:textColor="#FFE6E6E6"
-                android:textSize="12sp" />
+                android:layout_marginEnd="12dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <ImageView
-                android:layout_width="13dp"
-                android:layout_height="13dp"
-                android:layout_marginStart="12dp"
-                android:contentDescription="Tank"
-                android:src="@drawable/ic_w_fuel"
-                android:tint="#FFFFB74D" />
+                <ImageView
+                    android:layout_width="13dp"
+                    android:layout_height="13dp"
+                    android:contentDescription="Akku"
+                    android:src="@drawable/ic_w_bolt"
+                    android:tint="#FFF7FF14" />
 
-            <TextView
-                android:id="@+id/w_car_fuel"
+                <TextView
+                    android:id="@+id/w_car_soc"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="2dp"
+                    android:maxLines="1"
+                    android:text="–"
+                    android:textColor="#FFE6E6E6"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Tank (ausgeblendet beim Elektroauto) -->
+            <LinearLayout
+                android:id="@+id/w_car_fuel_group"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="3dp"
-                android:maxLines="1"
-                android:text="–"
-                android:textColor="#FFE6E6E6"
-                android:textSize="12sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="13dp"
+                    android:layout_height="13dp"
+                    android:contentDescription="Tank"
+                    android:src="@drawable/ic_w_fuel"
+                    android:tint="#FFFFB74D" />
+
+                <TextView
+                    android:id="@+id/w_car_fuel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="3dp"
+                    android:maxLines="1"
+                    android:text="–"
+                    android:textColor="#FFE6E6E6"
+                    android:textSize="12sp" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 

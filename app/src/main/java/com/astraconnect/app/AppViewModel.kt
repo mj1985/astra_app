@@ -32,6 +32,8 @@ import com.astraconnect.app.data.BatteryUse
 import com.astraconnect.app.data.EnergyLog
 import com.astraconnect.app.data.LatLon
 import com.astraconnect.app.data.NavTarget
+import com.astraconnect.app.data.Powertrain
+import com.astraconnect.app.data.VehicleProfile
 import com.astraconnect.app.data.RemoteCommand
 import com.astraconnect.app.data.RemoteControl
 import com.astraconnect.app.data.SecureStore
@@ -80,7 +82,8 @@ data class UiState(
     val tripsInfo: String? = null,
     // Akku-Verbrauch
     val battery: Map<String, BatteryUse> = emptyMap(),
-    val capacityKwh: Double = DEFAULT_CAPACITY,
+    /** Antriebsart, Akku- und Tankgröße. */
+    val profile: VehicleProfile = VehicleProfile.resolve(null, null, null, null, null),
     val backgroundEnabled: Boolean = true,
     val snapshotCount: Int = 0,
     val lastSnapshot: Instant? = null,
@@ -100,7 +103,6 @@ data class UiState(
     val rules: List<CategoryRule> = emptyList(),
     // Kosten, Tank, Benachrichtigungen, Sicherung
     val prices: Prices = Prices(1.75, 0.35, 10.0),
-    val tankLiters: Double = 40.0,
     val notify: NotifyPrefs = NotifyPrefs(),
     val backupFolder: String? = null,
     val lastBackup: Long = 0L,
@@ -115,11 +117,12 @@ data class UiState(
 ) {
     val vehicle: Vehicle? get() = vehicles.firstOrNull { it.id == selectedId } ?: vehicles.firstOrNull()
     val commandRunning: Boolean get() = commands.any { !it.final && Instant.now().epochSecond - it.sentAt.epochSecond < 180 }
-
-    companion object {
-        /** Nutzbare Kapazität Astra L Plug-in-Hybrid (12,4 kWh brutto). Anpassbar in den Einstellungen. */
-        const val DEFAULT_CAPACITY = 10.2
-    }
+    val powertrain: Powertrain get() = profile.powertrain
+    /** Eigener Name aus dem Opel-Konto, sonst das Modell aus der Liste. */
+    val vehicleName: String
+        get() = vehicle?.label?.takeIf { it.isNotBlank() } ?: profile.model?.let { "Opel ${it.name}" } ?: "Mein Opel"
+    val capacityKwh: Double get() = profile.capacityKwh
+    val tankLiters: Double get() = profile.tankLiters
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -144,13 +147,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var ui by mutableStateOf(
         UiState(
             loggedIn = auth.isLoggedIn,
-            capacityKwh = prefs.getFloat("capacity_kwh", UiState.DEFAULT_CAPACITY.toFloat()).toDouble(),
+            profile = VehicleProfile.load(app),
             backgroundEnabled = prefs.getBoolean("bg_enabled", true),
             remoteActivated = remote.isActivated,
             places = placeBook.places(),
             rules = placeBook.rules(),
             prices = settings.prices,
-            tankLiters = settings.tankLiters,
             notify = settings.notify,
             backupFolder = settings.backupTreeUri,
             lastBackup = settings.lastBackupAt,
@@ -232,6 +234,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 vehicles = vehicles,
                 selectedId = selected.id,
                 status = status,
+                profile = resolveProfile(selected, status),
                 rawVehicles = vehiclesJson.toString(2),
                 rawStatus = statusJson.toString(2),
                 rawMaintenance = maintenance?.toString(2),
@@ -260,6 +263,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 rawStatus = s.toString(2),
                 rawMaintenance = m?.toString(2),
             )
+            ui = ui.copy(profile = resolveProfile())
         }
     }
 
@@ -470,10 +474,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(prices = p)
     }
 
-    fun setTankLiters(l: Double) {
-        if (l !in 10.0..150.0) return
-        settings.tankLiters = l
-        ui = ui.copy(tankLiters = l)
+    /** null = wieder aus Modellliste bzw. Standard. */
+    fun setTankLiters(l: Double?) {
+        if (l != null && l !in 10.0..150.0) return
+        settings.tankLitersManual = l
+        updateProfile()
+    }
+
+    /** null = Antriebsart wieder automatisch erkennen. */
+    fun setPowertrain(p: Powertrain?) {
+        settings.powertrainManual = p
+        updateProfile()
+    }
+
+    private fun resolveProfile(vehicle: Vehicle? = ui.vehicle, status: VehicleStatus? = ui.status) =
+        VehicleProfile.resolve(settings.powertrainManual, settings.capacityKwhManual, settings.tankLitersManual, vehicle?.vin, status)
+
+    /** Profil neu bestimmen; bei geänderter Kapazität Verbräuche neu rechnen, Widgets nachziehen. */
+    private fun updateProfile() {
+        val before = ui.profile
+        ui = ui.copy(profile = resolveProfile())
+        if (ui.profile.capacityKwh != before.capacityKwh || ui.profile.tankLiters != before.tankLiters) recomputeBattery()
+        else Widgets.updateAll(getApplication())
     }
 
     fun setNotify(n: NotifyPrefs) {
@@ -494,8 +516,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(backupInfo = runCatching {
             val r = withContext(Dispatchers.IO) { backup.readFrom(uri) }
             ui = ui.copy(
-                trips = tripStore.load(), prices = settings.prices, tankLiters = settings.tankLiters,
-                capacityKwh = settings.capacityKwh, fuelEntries = costBook.fuel(), chargeEntries = costBook.charges(),
+                trips = tripStore.load(), prices = settings.prices,
+                profile = resolveProfile(), fuelEntries = costBook.fuel(), chargeEntries = costBook.charges(),
                 bottomBar = settings.bottomBar,
             )
             reloadPlaces()
@@ -541,11 +563,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Widgets.updateAll(getApplication())
     }
 
-    fun setCapacity(kwh: Double) {
-        if (kwh !in 1.0..100.0) return
-        prefs.edit().putFloat("capacity_kwh", kwh.toFloat()).apply()
-        ui = ui.copy(capacityKwh = kwh)
-        recomputeBattery()
+    /** null = wieder aus Modellliste bzw. Standard. */
+    fun setCapacity(kwh: Double?) {
+        if (kwh != null && kwh !in 1.0..150.0) return
+        settings.capacityKwhManual = kwh
+        updateProfile()
     }
 
     fun setBackground(enabled: Boolean) {

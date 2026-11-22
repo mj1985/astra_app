@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
+import android.view.View
 import android.widget.RemoteViews
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -142,8 +143,13 @@ class ControlWidget : BaseWidget() {
             CarImage.ensure(ctx, src.prefs)
             val car = CarImage.load(ctx, carBoxAspect(ctx))
             if (car != null) v.setImageViewBitmap(R.id.w_car, car)
+            val pt = src.profile.powertrain
             v.setTextViewText(R.id.w_car_soc, s?.batteryPercent.pct())
             v.setTextViewText(R.id.w_car_fuel, s?.fuelPercent.pct())
+            v.setViewVisibility(R.id.w_car_soc_group, if (pt.hasBattery) View.VISIBLE else View.GONE)
+            v.setViewVisibility(R.id.w_car_fuel_group, if (pt.hasFuel) View.VISIBLE else View.GONE)
+            // Ohne Antriebsbatterie keine Vorklimatisierung aus der Ferne
+            v.setViewVisibility(R.id.w_btn_climate, if (pt.hasRemoteClimate) View.VISIBLE else View.GONE)
             v.setOnClickPendingIntent(R.id.w_car_box, src.openApp())
             return v
         }

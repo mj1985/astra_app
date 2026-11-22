@@ -12,7 +12,6 @@ data class Vehicle(
     val motorization: String?,
     val pictureUrl: String?,
 ) {
-    val displayName: String get() = label?.takeIf { it.isNotBlank() } ?: "Opel Astra"
 
     companion object {
         fun parse(o: JSONObject) = Vehicle(

@@ -62,6 +62,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.astraconnect.app.AppViewModel
+import com.astraconnect.app.data.Powertrain
 import kotlinx.coroutines.launch
 
 enum class Dest(val title: String, val icon: ImageVector, val short: String = title) {
@@ -79,15 +80,27 @@ enum class Dest(val title: String, val icon: ImageVector, val short: String = ti
     RAW("API-Rohdaten", Icons.Filled.Code, "Rohdaten"),
     ;
 
+    /** Laden nur mit Antriebsbatterie, Tanken nur mit Tank. */
+    fun availableFor(p: Powertrain) = when (this) {
+        CHARGING -> p.hasBattery
+        FUEL -> p.hasFuel
+        else -> true
+    }
+
     companion object {
         /** Höchstens so viele frei wählbare Einträge neben der festen Startseite (Material: 3–5 Ziele). */
         const val MAX_BOTTOM = 4
-        val DEFAULT_BOTTOM = listOf(TRIPS, CHARGING, REMOTE, STATS)
 
-        /** Gewählte Einträge der Leiste unten (ohne Startseite). */
-        fun bottom(names: List<String>?): List<Dest> =
-            names?.mapNotNull { n -> entries.firstOrNull { it.name == n } }?.filter { it != OVERVIEW }?.distinct()?.take(MAX_BOTTOM)
-                ?: DEFAULT_BOTTOM
+        fun defaultBottom(p: Powertrain) = listOf(TRIPS, if (p.hasBattery) CHARGING else FUEL, REMOTE, STATS)
+
+        /** Ziele, die es für diesen Antrieb gibt. */
+        fun available(p: Powertrain) = entries.filter { it.availableFor(p) }
+
+        /** Gewählte Einträge der Leiste unten (ohne Startseite), nur für den Antrieb passende. */
+        fun bottom(names: List<String>?, p: Powertrain): List<Dest> =
+            names?.mapNotNull { n -> entries.firstOrNull { it.name == n } }
+                ?.filter { it != OVERVIEW && it.availableFor(p) }?.distinct()?.take(MAX_BOTTOM)
+                ?: defaultBottom(p)
     }
 }
 
@@ -100,6 +113,8 @@ fun AppRoot(vm: AppViewModel) {
 @Composable
 private fun MainScreen(vm: AppViewModel) {
     var dest by rememberSaveable { mutableStateOf(Dest.OVERVIEW) }
+    // Antrieb geändert und Ziel passt nicht mehr (z. B. „Laden“ beim Verbrenner) → Startseite
+    if (!dest.availableFor(vm.ui.powertrain)) dest = Dest.OVERVIEW
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -126,9 +141,9 @@ private fun MainScreen(vm: AppViewModel) {
         drawerContent = {
             ModalDrawerSheet {
                 Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
-                    Text(ui.vehicle?.displayName ?: "Opel Astra", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(ui.vehicleName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        ui.vehicle?.vin ?: "Plug-in-Hybrid",
+                        listOfNotNull(ui.powertrain.label, ui.vehicle?.vin).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -136,7 +151,7 @@ private fun MainScreen(vm: AppViewModel) {
                 HorizontalDivider()
                 Spacer(Modifier.height(8.dp))
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    Dest.entries.forEach { d ->
+                    Dest.available(ui.powertrain).forEach { d ->
                         NavigationDrawerItem(
                             label = { Text(d.title) },
                             icon = { Icon(d.icon, null) },
@@ -175,7 +190,7 @@ private fun MainScreen(vm: AppViewModel) {
                 )
             },
             bottomBar = {
-                val items = listOf(Dest.OVERVIEW) + Dest.bottom(ui.bottomBar)
+                val items = listOf(Dest.OVERVIEW) + Dest.bottom(ui.bottomBar, ui.powertrain)
                 NavigationBar {
                     items.forEach { d ->
                         NavigationBarItem(

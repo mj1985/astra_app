@@ -13,6 +13,7 @@ import android.util.Log
 import android.util.SizeF
 import android.widget.RemoteViews
 import com.astraconnect.app.MainActivity
+import com.astraconnect.app.data.VehicleProfile
 import com.astraconnect.app.data.VehicleStatus
 import org.json.JSONObject
 import java.time.Instant
@@ -106,6 +107,9 @@ class WidgetSource(val ctx: Context) {
         prefs.getString("cache_status", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
     }
     val status: VehicleStatus? by lazy { statusJson?.let { runCatching { VehicleStatus.parse(it) }.getOrNull() } }
+
+    /** Antriebsart und Größen – bestimmt, welche Teile die Widgets zeigen. */
+    val profile: VehicleProfile by lazy { VehicleProfile.load(ctx) }
 
     fun views(layout: Int) = RemoteViews(ctx.packageName, layout)
 

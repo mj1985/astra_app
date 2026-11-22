@@ -1,7 +1,9 @@
 package com.astraconnect.app.widget
 
+import android.view.View
 import android.widget.RemoteViews
 import com.astraconnect.app.R
+import com.astraconnect.app.data.Powertrain
 import com.astraconnect.app.data.RemoteControl
 import com.astraconnect.app.data.VehicleStatus
 import com.astraconnect.app.ui.km
@@ -22,6 +24,20 @@ class StatusWidget : BaseWidget() {
         fun render(src: WidgetSource): RemoteViews {
             val s = src.status
             val v = src.views(R.layout.widget_status)
+            val pt = src.profile.powertrain
+            if (!pt.hasBattery) {
+                // Verbrenner: dieses Widget hat nichts zu zeigen – Hinweis statt leerer Werte
+                v.setTextViewText(R.id.w_soc, "–")
+                v.setProgressBar(R.id.w_soc_bar, 100, 0, false)
+                v.setInt(R.id.w_bolt, "setColorFilter", COLOR_TEXT)
+                v.setTextViewText(R.id.w_charge_state, "Kein Ladeanschluss")
+                v.setTextColor(R.id.w_charge_state, COLOR_TEXT)
+                v.setTextViewText(R.id.w_charge_eta, "Für Verbrenner passt das Reichweiten-Widget.")
+                v.setTextViewText(R.id.w_range, "Reichweite ${s?.totalRangeKm.km()}")
+                v.setTextViewText(R.id.w_updated, s?.updatedAt.stand(src.now))
+                v.setOnClickPendingIntent(R.id.widget_root, src.openApp())
+                return v
+            }
             val charge = chargeText(s, src.now)
 
             v.setTextViewText(R.id.w_soc, s?.batteryPercent.pct())
@@ -32,7 +48,11 @@ class StatusWidget : BaseWidget() {
             v.setTextViewText(R.id.w_charge_eta, charge.detail)
             v.setTextViewText(
                 R.id.w_range,
-                if (s == null) "Reichweite –" else "${s.electricRangeKm.km()} elektrisch · ${s.totalRangeKm.km()} gesamt",
+                when {
+                    s == null -> "Reichweite –"
+                    pt.hasFuel -> "${s.electricRangeKm.km()} elektrisch · ${s.totalRangeKm.km()} gesamt"
+                    else -> "Reichweite ${s.electricRangeKm.km()}"
+                },
             )
             v.setTextViewText(R.id.w_updated, s?.updatedAt.stand(src.now))
             v.setOnClickPendingIntent(R.id.widget_root, src.openApp())
@@ -51,6 +71,14 @@ class RangeWidget : BaseWidget() {
 
         private fun fill(src: WidgetSource, v: RemoteViews): RemoteViews {
             val s = src.status
+            val pt = src.profile.powertrain
+            // Nur die Energiearten zeigen, die das Auto hat
+            val bat = if (pt.hasBattery) View.VISIBLE else View.GONE
+            val fuel = if (pt.hasFuel) View.VISIBLE else View.GONE
+            v.setViewVisibility(R.id.w_soc_row, bat)
+            v.setViewVisibility(R.id.w_soc_bar, bat)
+            v.setViewVisibility(R.id.w_fuel_row, fuel)
+            v.setViewVisibility(R.id.w_fuel_bar, fuel)
             v.setTextViewText(R.id.w_soc, s?.batteryPercent.pct())
             v.setTextViewText(R.id.w_range_el, s?.electricRangeKm.km())
             v.setProgressBar(R.id.w_soc_bar, 100, percent(s?.batteryPercent), false)
@@ -60,7 +88,10 @@ class RangeWidget : BaseWidget() {
             v.setTextViewText(
                 R.id.w_range_total,
                 if (s == null) "Noch keine Daten"
-                else listOf("Gesamt ${s.totalRangeKm.km()}", s.updatedAt.stand(src.now)).filter { it.isNotEmpty() }.joinToString(" · "),
+                else listOf(
+                    if (pt == Powertrain.PHEV) "Gesamt ${s.totalRangeKm.km()}" else "",
+                    s.updatedAt.stand(src.now),
+                ).filter { it.isNotEmpty() }.joinToString(" · "),
             )
             v.setOnClickPendingIntent(R.id.widget_root, src.openApp())
             return v

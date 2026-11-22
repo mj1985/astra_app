@@ -52,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import android.location.Geocoder
 import com.astraconnect.app.data.LatLon
+import com.astraconnect.app.data.Powertrain
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +70,7 @@ import java.util.Locale
 fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
     val ui = vm.ui
     val s = ui.status
+    val pt = ui.powertrain
     val ctx = LocalContext.current
 
     PullToRefreshBox(isRefreshing = ui.loading, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
@@ -96,7 +98,7 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
                             modifier = Modifier.fillMaxWidth().height(170.dp),
                         )
                     }
-                    s.charging?.takeIf { it.isCharging }?.let { c ->
+                    s.charging?.takeIf { pt.hasBattery && it.isCharging }?.let { c ->
                         ChargingBanner(
                             percent = s.batteryPercent,
                             remaining = c.remaining,
@@ -106,9 +108,9 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
                         )
                         Spacer(Modifier.height(12.dp))
                     }
-                    Text(ui.vehicle?.displayName ?: "Opel Astra", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(ui.vehicleName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Text(
-                        "Plug-in-Hybrid · Daten ${s.updatedAt.ago()} (${s.updatedAt.dateTime()})",
+                        "${pt.label} · Daten ${s.updatedAt.ago()} (${s.updatedAt.dateTime()})",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -127,8 +129,10 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
                         if (s.windowsReported) {
                             if (s.anyWindowOpen) StatusChip("Fenster offen", Bad) else StatusChip("Fenster zu", Ok)
                         }
-                        if (s.charging?.isCharging == true) StatusChip("Lädt", Ok, Icons.Filled.BatteryChargingFull)
-                        else if (s.charging?.plugged == true) StatusChip("Kabel steckt", Warn, Icons.Filled.EvStation)
+                        if (pt.hasBattery) {
+                            if (s.charging?.isCharging == true) StatusChip("Lädt", Ok, Icons.Filled.BatteryChargingFull)
+                            else if (s.charging?.plugged == true) StatusChip("Kabel steckt", Warn, Icons.Filled.EvStation)
+                        }
                     }
                 }
             }
@@ -143,8 +147,10 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
                         FilledTonalButton(onClick = { onNavigate(Dest.REMOTE) }, enabled = !ui.remoteBusy, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Filled.LockOpen, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Auf…")
                         }
-                        FilledTonalButton(onClick = { vm.preconditioning(true) }, enabled = !ui.remoteBusy, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Filled.AcUnit, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Klima")
+                        if (pt.hasRemoteClimate) {
+                            FilledTonalButton(onClick = { vm.preconditioning(true) }, enabled = !ui.remoteBusy, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Filled.AcUnit, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Klima")
+                            }
                         }
                     }
                     ui.commands.firstOrNull()?.let {
@@ -164,27 +170,34 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
 
             // Energie & Reichweite
             item {
-                SectionCard("Energie & Reichweite", Icons.Filled.EvStation) {
+                SectionCard(
+                    if (pt == Powertrain.PHEV) "Energie & Reichweite" else "Reichweite",
+                    if (pt.hasBattery) Icons.Filled.EvStation else Icons.Filled.LocalGasStation,
+                ) {
                     Row(Modifier.fillMaxWidth()) {
-                        BigStat(s.totalRangeKm.km(), "Gesamtreichweite", Modifier.weight(1f))
+                        BigStat(s.totalRangeKm.km(), if (pt == Powertrain.PHEV) "Gesamtreichweite" else "Reichweite", Modifier.weight(1f))
                         BigStat(s.mileageKm.km(), "Kilometerstand", Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(8.dp))
-                    LevelBar(
-                        "Hochvoltbatterie", s.batteryPercent,
-                        "elektrische Reichweite ${s.electricRangeKm.km()}",
-                        MaterialTheme.colorScheme.primary, Icons.Filled.BatteryChargingFull,
-                    )
-                    LevelBar(
-                        "Tank", s.fuelPercent,
-                        "Reichweite mit Benzin ${s.fuelRangeKm.km()}",
-                        Warn, Icons.Filled.LocalGasStation,
-                    )
+                    if (pt.hasBattery) {
+                        LevelBar(
+                            if (pt == Powertrain.BEV) "Akku" else "Hochvoltbatterie", s.batteryPercent,
+                            "elektrische Reichweite ${s.electricRangeKm.km()}",
+                            MaterialTheme.colorScheme.primary, Icons.Filled.BatteryChargingFull,
+                        )
+                    }
+                    if (pt.hasFuel) {
+                        LevelBar(
+                            "Tank", s.fuelPercent,
+                            "Reichweite mit Kraftstoff ${s.fuelRangeKm.km()}",
+                            Warn, Icons.Filled.LocalGasStation,
+                        )
+                    }
                 }
             }
 
             // Laden
-            s.charging?.let { c ->
+            s.charging?.takeIf { pt.hasBattery }?.let { c ->
                 item {
                     SectionCard("Laden", Icons.Filled.BatteryChargingFull) {
                         InfoRow("Ladekabel", when (c.plugged) { true -> "eingesteckt"; false -> "nicht eingesteckt"; null -> "–" })
@@ -232,7 +245,7 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
                         }
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(onClick = {
-                            val uri = Uri.parse("geo:${p.lat},${p.lon}?q=${p.lat},${p.lon}(Opel%20Astra)")
+                            val uri = Uri.parse("geo:${p.lat},${p.lon}?q=${p.lat},${p.lon}(${Uri.encode(ui.vehicleName)})")
                             runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                         }) { Text("In Karten-App öffnen") }
                     }

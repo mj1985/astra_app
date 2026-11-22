@@ -165,7 +165,7 @@ private fun RemoteControls(vm: AppViewModel) {
                 }
             }
         }
-        item {
+        if (ui.powertrain.hasRemoteClimate) item {
             SectionCard("Klima") {
                 s?.let { InfoRow("Vorklimatisierung", preconditioningLabel(it.preconditioning)) }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -174,7 +174,7 @@ private fun RemoteControls(vm: AppViewModel) {
                 }
             }
         }
-        item {
+        if (ui.powertrain.hasBattery) item {
             SectionCard("Laden") {
                 s?.charging?.let { InfoRow("Status", it.statusLabel) }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

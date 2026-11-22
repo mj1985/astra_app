@@ -1,7 +1,8 @@
 # Astra Connect
 
-Android-App (Kotlin, Jetpack Compose) für den Opel Astra Plug-in-Hybrid (2022) über die
-Stellantis Connected-Car-API v4 – dieselbe Schnittstelle, die auch die MyOpel-App nutzt.
+Android-App (Kotlin, Jetpack Compose) für Opel-Fahrzeuge über die Stellantis Connected-Car-API v4 –
+dieselbe Schnittstelle, die auch die MyOpel-App nutzt. Entwickelt mit dem Astra Plug-in-Hybrid (2022),
+nutzbar auch für Elektroautos und Verbrenner/Mild-Hybride.
 
 ## Funktionen
 
@@ -14,8 +15,11 @@ Stellantis Connected-Car-API v4 – dieselbe Schnittstelle, die auch die MyOpel-
 - **Wartung & 12V-Batterie:** Tage/km bis zur Wartung inkl. Fälligkeitsdatum, 12V-Ladezustand mit Bewertung
 - **Fernsteuerung:** Verriegeln/Entriegeln, Vorklimatisierung an/aus, Laden starten/pausieren, Hupe, Lichtsignal,
   Fahrzeug aufwecken (frischer Status) – mit Rückmeldung vom Auto
+- **Antriebsart:** wird aus den Fahrzeugdaten erkannt (oder in den Einstellungen gewählt) und bestimmt,
+  welche Bereiche erscheinen (Laden/Klima nur mit Antriebsbatterie, Tanken nur mit Tank). Akku- und Tankgröße
+  kommen aus einer Modellliste nach VIN (Quelle: `car_models.yml` von psa_car_controller) und sind änderbar
 - **Akku-Verbrauch pro Fahrt (berechnet):** Ladestand vor/nach der Fahrt × nutzbare Kapazität (einstellbar,
-  Standard 10,2 kWh); der Ladestand wird dafür alle 15 Min. im Hintergrund aufgezeichnet
+  Astra Plug-in-Hybrid 10,2 kWh); der Ladestand wird dafür alle 15 Min. im Hintergrund aufgezeichnet
 - **myOpel-Import:** Export der myOpel-App (`.myop` oder ohne Endung) einlesen; Fahrten werden mit dem
   Fahrtenbuch abgeglichen (Startzeit ± 3 min bzw. gleicher km-Stand) und ergänzt
 - **Fahrten zusammenführen/trennen:** Umparken oder kurze Zwischenstopps an die vorherige Fahrt anhängen

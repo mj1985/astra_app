@@ -40,13 +40,20 @@ class AppSettings(context: Context) {
                 .putFloat("charge_loss", v.chargeLossPct.toFloat()).apply()
         }
 
-    var tankLiters: Double
-        get() = prefs.getFloat("tank_l", 40f).toDouble()
-        set(v) = prefs.edit().putFloat("tank_l", v.toFloat()).apply()
+    /** Selbst eingetragener Tankinhalt; null = aus Modellliste bzw. Standard (siehe [VehicleProfile]). */
+    var tankLitersManual: Double?
+        get() = if (prefs.contains("tank_l")) prefs.getFloat("tank_l", 0f).toDouble() else null
+        set(v) = prefs.edit().apply { if (v == null) remove("tank_l") else putFloat("tank_l", v.toFloat()) }.apply()
 
-    var capacityKwh: Double
-        get() = prefs.getFloat("capacity_kwh", 10.2f).toDouble()
-        set(v) = prefs.edit().putFloat("capacity_kwh", v.toFloat()).apply()
+    /** Selbst eingetragene nutzbare Akkukapazität; null = aus Modellliste bzw. Standard. */
+    var capacityKwhManual: Double?
+        get() = if (prefs.contains("capacity_kwh")) prefs.getFloat("capacity_kwh", 0f).toDouble() else null
+        set(v) = prefs.edit().apply { if (v == null) remove("capacity_kwh") else putFloat("capacity_kwh", v.toFloat()) }.apply()
+
+    /** Selbst gewählte Antriebsart; null = automatisch erkennen. */
+    var powertrainManual: Powertrain?
+        get() = Powertrain.of(prefs.getString("powertrain", null))
+        set(v) = prefs.edit().putString("powertrain", v?.name).apply()
 
     var notify: NotifyPrefs
         get() = NotifyPrefs(
@@ -84,7 +91,9 @@ class AppSettings(context: Context) {
     /** Einstellungen, die in die Datensicherung gehören. */
     fun toJson(): JSONObject = JSONObject()
         .put("price_fuel", prices.fuelPerLiter).put("price_power", prices.powerPerKwh).put("charge_loss", prices.chargeLossPct)
-        .put("tank_l", tankLiters).put("capacity_kwh", capacityKwh)
+        .put("tank_l", tankLitersManual ?: JSONObject.NULL)
+        .put("capacity_kwh", capacityKwhManual ?: JSONObject.NULL)
+        .put("powertrain", powertrainManual?.name ?: JSONObject.NULL)
         .put("bottom_bar", bottomBar?.joinToString(",") ?: JSONObject.NULL)
 
     fun restore(o: JSONObject) {
@@ -94,7 +103,8 @@ class AppSettings(context: Context) {
             o.num("price_power") ?: prices.powerPerKwh,
             o.num("charge_loss") ?: prices.chargeLossPct,
         )
-        o.num("tank_l")?.let { tankLiters = it }
-        o.num("capacity_kwh")?.let { capacityKwh = it }
+        o.num("tank_l")?.let { tankLitersManual = it }
+        o.num("capacity_kwh")?.let { capacityKwhManual = it }
+        Powertrain.of(o.str("powertrain"))?.let { powertrainManual = it }
     }
 }
