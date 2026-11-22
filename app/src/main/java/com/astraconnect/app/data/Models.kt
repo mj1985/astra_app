@@ -216,7 +216,11 @@ data class VehicleStatus(
                 windows = windows,
                 windowsReported = windows.isNotEmpty(),
                 position = position,
-                positionAt = parseInstant(json.pathStr("lastPosition", "properties", "updatedAt")),
+                // Laut API-Spezifikation „createdAt“; „updatedAt“ nur zur Sicherheit
+                positionAt = parseInstant(
+                    json.pathStr("lastPosition", "properties", "createdAt")
+                        ?: json.pathStr("lastPosition", "properties", "updatedAt")
+                ),
                 outsideTempC = json.pathNum("environment", "air", "temp"),
                 ignition = json.pathStr("ignition", "type"),
                 moving = json.path("kinetic", "moving") as? Boolean,

@@ -227,7 +227,9 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
                         PositionMiniMap(p, Modifier.padding(bottom = 10.dp))
                         val address = rememberAddress(p)
                         Text(address ?: String.format(Locale.US, "%.5f, %.5f", p.lat, p.lon), fontWeight = FontWeight.Medium)
-                        Text("Stand: ${s.positionAt.dateTime()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        (s.positionAt ?: s.updatedAt)?.let { at ->
+                            Text("Stand: ${at.dateTime()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(onClick = {
                             val uri = Uri.parse("geo:${p.lat},${p.lon}?q=${p.lat},${p.lon}(Opel%20Astra)")
