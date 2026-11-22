@@ -38,10 +38,12 @@ import com.astraconnect.app.data.Powertrain
 import com.astraconnect.app.data.VehicleProfile
 import com.astraconnect.app.data.RemoteCommand
 import com.astraconnect.app.data.RemoteControl
+import com.astraconnect.app.data.TripRoute
 import com.astraconnect.app.data.SecureStore
 import com.astraconnect.app.data.SnapshotWorker
 import com.astraconnect.app.data.StellantisApi
 import com.astraconnect.app.data.Stores
+import com.astraconnect.app.data.TripFollow
 import com.astraconnect.app.data.Trip
 import com.astraconnect.app.data.TripCategory
 import com.astraconnect.app.data.Vehicle
@@ -82,6 +84,8 @@ data class UiState(
     val trips: List<Trip> = emptyList(),
     val tripsSyncing: Boolean = false,
     val tripsInfo: String? = null,
+    /** Wird erhöht, wenn neue Standorte aufgezeichnet wurden (Karten neu zeichnen). */
+    val routeVersion: Int = 0,
     // Akku-Verbrauch
     val battery: Map<String, BatteryUse> = emptyMap(),
     /** Antriebsart, Akku- und Tankgröße. */
@@ -146,6 +150,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val costBook = Stores.costs(app)
     private val settings = AppSettings(app)
     private val backup = Backup(app)
+    private val trackLog = Stores.track(app)
     private val wakeups = ArrayDeque<Long>()
 
     var ui by mutableStateOf(
@@ -227,7 +232,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val statusJson = api.status(selected.id)
             val maintenance = api.maintenance(selected.id)
             val status = VehicleStatus.parse(statusJson, maintenance)
-            withContext(Dispatchers.IO) { energyLog.record(status) }
+            val newPoint = withContext(Dispatchers.IO) {
+                energyLog.record(status)
+                trackLog.record(status)
+            }
+            if (newPoint) ui = ui.copy(routeVersion = ui.routeVersion + 1)
+            TripFollow.onStatus(getApplication(), status)
             prefs.edit()
                 .putString("cache_vehicles", vehiclesJson.toString())
                 .putString("cache_status", statusJson.toString())
@@ -684,6 +694,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ui = ui.copy(remoteBusy = false)
             }
         }
+    }
+
+    // ------------------------------------------------------------------ Streckenverlauf
+
+    /**
+     * Grober Streckenverlauf aus den während der Fahrt aufgezeichneten Standorten; null = keine Punkte.
+     * [UiState.routeVersion] lesen, damit Karten nach neuen Punkten neu gezeichnet werden.
+     */
+    fun routeFor(t: Trip): TripRoute? {
+        val s = t.startedAt ?: return null
+        val e = t.stoppedAt ?: return null
+        return TripRoute.fromTrack(t, trackLog.between(s.minus(TripRoute.MARGIN), e.plus(TripRoute.MARGIN)))
     }
 
     // ------------------------------------------------------------------ Navigationsziel

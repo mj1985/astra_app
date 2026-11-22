@@ -210,4 +210,10 @@ object Stores {
     fun energy(ctx: Context): EnergyLog = energy ?: synchronized(this) {
         energy ?: EnergyLog(ctx.applicationContext).also { energy = it }
     }
+
+    @Volatile private var track: TrackLog? = null
+
+    fun track(ctx: Context): TrackLog = track ?: synchronized(this) {
+        track ?: TrackLog(ctx.applicationContext).also { track = it }
+    }
 }

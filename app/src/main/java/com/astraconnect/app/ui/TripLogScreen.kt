@@ -307,8 +307,13 @@ private fun TripSheet(t: Trip, b: BatteryUse?, capacityKwh: Double, vm: AppViewM
             item {
                 Text("Fahrt vom ${t.startedAt.dateLong()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                TripMiniMap(t, vm.ui.powertrain)
+                val route = remember(t.key, vm.ui.routeVersion) { vm.routeFor(t) }
+                TripMiniMap(t, vm.ui.powertrain, route?.points)
                 Spacer(Modifier.height(8.dp))
+                InfoRow(
+                    "Streckenverlauf",
+                    route?.let { "grob, ${it.points.size} Punkte" } ?: "nicht aufgezeichnet (gerade Linie)",
+                )
                 InfoRow("Abfahrt", t.startedAt.dateTime())
                 InfoRow("Ankunft", t.stoppedAt.dateTime())
                 InfoRow("Dauer", t.duration.pretty())

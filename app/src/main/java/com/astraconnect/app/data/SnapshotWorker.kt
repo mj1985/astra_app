@@ -35,6 +35,8 @@ class SnapshotWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
             val maint = prefs.getString("cache_maint", null)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
             val status = VehicleStatus.parse(json, maint)
             log.record(status)
+            Stores.track(ctx).record(status)
+            TripFollow.onStatus(ctx, status)
             prefs.edit().putString("cache_status", json.toString()).apply()
             Notifier.check(ctx, status)
             ChargeLimit.check(ctx, status)

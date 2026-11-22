@@ -37,7 +37,9 @@ nutzbar auch für Elektroautos und Verbrenner/Mild-Hybride.
   ohne Eintrag gelten die Standardpreise (inkl. Ladeverluste)
 - **Statistik:** km pro Monat (rein elektrisch / mit Benzin), Ø Benzinverbrauch, Kosten, Monatstabelle,
   Datenabgleich API ↔ myOpel (Einheiten-Check)
-- **Karte:** Fahrten (Start → Ziel) und Häufigkeitskarte auf OpenStreetMap; Mini-Karte pro Fahrt
+- **Karte:** Fahrten und Häufigkeitskarte auf OpenStreetMap; Mini-Karte pro Fahrt. Während der Fahrt fragt die App
+  etwa alle 2 Min. den Standort ab (nur Opel-Server, ohne Wecken) und zeichnet daraus einen groben Streckenverlauf;
+  ohne aufgezeichnete Punkte bleibt es bei der Linie Start → Ziel
 - **Benachrichtigungen:** Laden fertig/abgebrochen, Auto nachts offen, 12-V-Batterie schwach, Wartung fällig,
   Anmeldung abgelaufen
 - **Homescreen-Widgets:**

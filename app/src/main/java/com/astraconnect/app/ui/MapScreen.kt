@@ -240,6 +240,8 @@ fun MapScreen(vm: AppViewModel) {
     val since = if (period == 0) null else Instant.now().minus(period.toLong(), ChronoUnit.DAYS)
     val trips = ui.trips.filter { since == null || (it.startedAt?.isAfter(since) == true) }
     val spots = remember(trips) { PlaceBook.hotspots(trips) }
+    // Aufgezeichnete Streckenverläufe (routeVersion: nach neuen Standorten neu bestimmen)
+    val routes = remember(trips, ui.routeVersion) { trips.associate { it.key to vm.routeFor(it) } }
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -251,7 +253,10 @@ fun MapScreen(vm: AppViewModel) {
                 }
             }
             Text(
-                if (mode == 0) "${trips.size} Fahrten · Linie = Start → Ziel (die API liefert keinen Streckenverlauf). " +
+                if (mode == 0) "${trips.size} Fahrten · " +
+                    (if (routes.values.any { it?.available == true })
+                        "${routes.values.count { it?.available == true }} mit Streckenverlauf, sonst Linie Start → Ziel. "
+                    else "Linie = Start → Ziel. Grobe Streckenverläufe zeichnet die App bei künftigen Fahrten auf. ") +
                     (if (ui.powertrain == Powertrain.PHEV) "Blau = rein elektrisch, Orange = mit Kraftstoff." else "")
                 else "${spots.size} Orte · Kreisgröße = Anzahl der Besuche (Start + Ziel).",
                 style = MaterialTheme.typography.bodySmall,
@@ -265,8 +270,9 @@ fun MapScreen(vm: AppViewModel) {
                 trips.forEach { t ->
                     val a = t.startPos?.geo() ?: return@forEach
                     val b = t.endPos?.geo() ?: return@forEach
+                    val path = routes[t.key]?.takeIf { it.available }?.points?.map { it.geo() }
                     map.overlays += Polyline(map).apply {
-                        setPoints(listOf(a, b))
+                        setPoints(path ?: listOf(a, b))
                         outlinePaint.color = tripColor(t, ui.powertrain, accent, electric, fuel)
                         outlinePaint.strokeWidth = 5f
                         outlinePaint.alpha = 170
@@ -297,22 +303,25 @@ fun MapScreen(vm: AppViewModel) {
 
 /** Kleine, nicht bedienbare Karte mit Start- und Zielpunkt einer Fahrt. */
 @Composable
-fun TripMiniMap(t: Trip, powertrain: Powertrain, height: Dp = 180.dp) {
+fun TripMiniMap(t: Trip, powertrain: Powertrain, route: List<LatLon>? = null, height: Dp = 180.dp) {
     val a = t.startPos?.geo()
     val b = t.endPos?.geo()
-    if (a == null && b == null) return
+    val path = route?.takeIf { it.size >= 2 }?.map { it.geo() }
+    if (a == null && b == null && path == null) return
     val color = tripColor(t, powertrain, MaterialTheme.colorScheme.primary.toArgb(), ChartColors.electric.toArgb(), ChartColors.fuel.toArgb())
     Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(14.dp))) {
         OsmMap(Modifier.fillMaxSize(), interactive = false) { map, icons ->
-            val pts = listOfNotNull(a, b)
-            if (a != null && b != null) {
+            // Streckenverlauf, sonst gerade Linie Start → Ziel
+            val line = path ?: listOfNotNull(a, b).takeIf { it.size == 2 }
+            line?.let {
                 map.overlays += Polyline(map).apply {
-                    setPoints(pts); outlinePaint.color = color; outlinePaint.strokeWidth = 6f
+                    setPoints(it); outlinePaint.color = color; outlinePaint.strokeWidth = 6f
+                    if (path == null) outlinePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
                 }
             }
-            a?.let { map.marker(it, icons.ringIcon) }
-            b?.let { map.marker(it, icons.dot) }
-            map.fit(pts)
+            (a ?: path?.first())?.let { map.marker(it, icons.ringIcon) }
+            (b ?: path?.last())?.let { map.marker(it, icons.dot) }
+            map.fit(listOfNotNull(a, b) + path.orEmpty())
         }
     }
 }
