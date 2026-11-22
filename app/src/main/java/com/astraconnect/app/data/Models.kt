@@ -85,6 +85,8 @@ data class VehicleStatus(
     val updatedAt: Instant?,
     val mileageKm: Double?,
     val batteryPercent: Double?,
+    /** Wann das Auto den Akkustand zuletzt gemeldet hat (Energie „Electric“, createdAt/updatedAt). */
+    val batteryUpdatedAt: Instant? = null,
     val electricRangeKm: Double?,
     val fuelPercent: Double?,
     val fuelRangeKm: Double?,
@@ -205,6 +207,7 @@ data class VehicleStatus(
                 updatedAt = parseInstant(json.str("lastUpdate") ?: json.str("updatedAt") ?: json.str("createdAt")),
                 mileageKm = json.pathNum("odometer", "mileage") ?: json.pathNum("timed.odometer", "mileage"),
                 batteryPercent = el.num("level"),
+                batteryUpdatedAt = listOfNotNull(parseInstant(el.str("createdAt")), parseInstant(el.str("updatedAt"))).maxOrNull(),
                 electricRangeKm = el.num("autonomy"),
                 fuelPercent = fuel.num("level"),
                 fuelRangeKm = fuel.num("autonomy"),

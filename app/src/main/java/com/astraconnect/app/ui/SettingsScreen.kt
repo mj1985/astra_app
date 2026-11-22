@@ -81,6 +81,21 @@ fun SettingsScreen(vm: AppViewModel) {
                 if (ui.remoteActivated) {
                     OutlinedButton(onClick = { vm.resetRemote() }) { Text("Freischaltung löschen") }
                 }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Auto automatisch wecken", Modifier.weight(1f))
+                    Switch(
+                        checked = ui.chargeLimit.wakeUp,
+                        onCheckedChange = { vm.setChargeLimit(ui.chargeLimit.copy(wakeUp = it)) },
+                    )
+                }
+                Text(
+                    "Die App weckt das Auto nur für das Ladelimit: kurz vor dem Limit, wenn die Daten veraltet sind. " +
+                        "Ausschalten, wenn schon ein anderes Programm das Auto weckt (z. B. psa_car_controller) – " +
+                        "dann nutzt die App dessen frische Daten vom Opel-Server. „Status holen“ in der Fernsteuerung bleibt verfügbar.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

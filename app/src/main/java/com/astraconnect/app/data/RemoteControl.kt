@@ -54,13 +54,21 @@ data class RemoteCommand(val service: String, val params: JSONObject) {
          */
         fun charging(start: Boolean, nextDelayedTime: String?): RemoteCommand {
             val (h, m) = RemoteControl.ptTime(nextDelayedTime) ?: (22 to 0)
-            return RemoteCommand(
-                "/VehCharge",
-                JSONObject()
-                    .put("program", JSONObject().put("hour", h).put("minute", m))
-                    .put("type", if (start) "immediate" else "delayed"),
-            )
+            return charge(if (start) "immediate" else "delayed", h, m)
         }
+
+        /** Verzögertes Laden mit neuer Startzeit – ändert die im Auto programmierte Startzeit. */
+        fun delayedChargeAt(hour: Int, minute: Int) = charge("delayed", hour, minute)
+
+        private fun charge(type: String, hour: Int, minute: Int) = RemoteCommand(
+            "/VehCharge",
+            JSONObject()
+                .put("program", JSONObject().put("hour", hour).put("minute", minute))
+                .put("type", type),
+        )
+
+        /** Auto wecken, damit es einen frischen Status an Opel meldet. */
+        fun wakeUp() = RemoteCommand("/VehCharge/state", JSONObject().put("action", "state"))
 
         /** [status] = zuletzt abgerufener Status, damit gespeicherte Programme erhalten bleiben. */
         fun preconditioning(on: Boolean, status: JSONObject?) = RemoteCommand(

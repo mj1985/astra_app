@@ -55,8 +55,10 @@ class AppSettings(context: Context) {
         get() = ChargeLimitPrefs(
             prefs.getBoolean("charge_limit_on", false),
             prefs.getInt("charge_limit_pct", ChargeLimitPrefs.DEFAULT_PCT),
+            prefs.getBoolean("auto_wakeup", true),
         )
-        set(v) = prefs.edit().putBoolean("charge_limit_on", v.enabled).putInt("charge_limit_pct", v.percent).apply()
+        set(v) = prefs.edit().putBoolean("charge_limit_on", v.enabled).putInt("charge_limit_pct", v.percent)
+            .putBoolean("auto_wakeup", v.wakeUp).apply()
 
     /** Selbst gewählte Antriebsart; null = automatisch erkennen. */
     var powertrainManual: Powertrain?
@@ -103,6 +105,7 @@ class AppSettings(context: Context) {
         .put("capacity_kwh", capacityKwhManual ?: JSONObject.NULL)
         .put("powertrain", powertrainManual?.name ?: JSONObject.NULL)
         .put("charge_limit_on", chargeLimit.enabled).put("charge_limit_pct", chargeLimit.percent)
+        .put("auto_wakeup", chargeLimit.wakeUp)
         .put("bottom_bar", bottomBar?.joinToString(",") ?: JSONObject.NULL)
 
     fun restore(o: JSONObject) {
@@ -116,7 +119,11 @@ class AppSettings(context: Context) {
         o.num("capacity_kwh")?.let { capacityKwhManual = it }
         Powertrain.of(o.str("powertrain"))?.let { powertrainManual = it }
         if (o.has("charge_limit_pct")) {
-            chargeLimit = ChargeLimitPrefs(o.optBoolean("charge_limit_on", false), o.optInt("charge_limit_pct", ChargeLimitPrefs.DEFAULT_PCT))
+            chargeLimit = ChargeLimitPrefs(
+                o.optBoolean("charge_limit_on", false),
+                o.optInt("charge_limit_pct", ChargeLimitPrefs.DEFAULT_PCT),
+                o.optBoolean("auto_wakeup", true),
+            )
         }
     }
 }

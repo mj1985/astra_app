@@ -65,6 +65,7 @@ import com.astraconnect.app.AppViewModel
 import com.astraconnect.app.CommandEntry
 import com.astraconnect.app.data.ChargeLimit
 import com.astraconnect.app.data.ChargeLimitPrefs
+import com.astraconnect.app.data.RemoteControl
 import com.astraconnect.app.ui.theme.Bad
 import com.astraconnect.app.ui.theme.Ok
 import kotlin.math.roundToInt
@@ -312,11 +313,22 @@ private fun ChargeLimitCard(vm: AppViewModel) {
             val eta = soc?.let { ChargeLimit.minutesTo(limit.percent, it, c.remaining) }
             if (eta != null) InfoRow("Limit erreicht in ca.", eta.pretty())
         }
+        vm.chargeLimitState().originalStart?.let { orig ->
+            Text(
+                "Ladestart ist verlegt (${c?.nextDelayedTime?.let { RemoteControl.ptTime(it) }?.let { ChargeLimit.hm(it) } ?: "–"} Uhr) – " +
+                    "die ursprüngliche Zeit ${ChargeLimit.hm(orig)} Uhr wird wiederhergestellt, sobald der Akku unter dem Limit ist " +
+                    "oder das Limit aus ist.",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         Text(
             "Für Autos ohne eigenes Ladelimit: Die App prüft beim Laden den Akkustand (im Hintergrund alle 15 Min., " +
-                "kurz vor dem Limit zusätzlich) und pausiert dann – das Auto lädt ab der programmierten Startzeit weiter, " +
-                "die App pausiert erneut. Je nach Ladeleistung kann der Akku einige Prozent über dem Limit landen. " +
-                "Zum Vollladen das Limit ausschalten. Braucht die Hintergrund-Aufzeichnung (Einstellungen) und die eingerichtete Fernsteuerung.",
+                "kurz vor dem Limit zusätzlich) und pausiert dann. Sind die Daten kurz vor dem Limit älter als 10 Min. " +
+                "(Schnellladen 5 Min.), weckt sie das Auto für einen frischen Stand (höchstens alle 10 Min., ${ChargeLimit.MAX_WAKEUPS_PER_DAY}× pro Tag). " +
+                "Damit das Auto zur programmierten Startzeit nicht weiterlädt, verlegt die App diese kurz vorher und stellt sie später wieder her. " +
+                "Je nach Ladeleistung kann der Akku einige Prozent über dem Limit landen. Zum Vollladen das Limit ausschalten. " +
+                "Braucht die Hintergrund-Aufzeichnung (Einstellungen) und die eingerichtete Fernsteuerung.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -324,6 +336,13 @@ private fun ChargeLimitCard(vm: AppViewModel) {
             Text(
                 "Die Hintergrund-Aufzeichnung ist aus – das Limit wirkt nur bei geöffneter App.",
                 color = Bad,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (!limit.wakeUp) {
+            Text(
+                "Automatisches Wecken ist aus (Einstellungen) – die App nutzt nur die Daten, die das Auto von selbst meldet.",
+                color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.bodySmall,
             )
         }

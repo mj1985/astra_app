@@ -505,6 +505,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         else Widgets.updateAll(getApplication())
     }
 
+    /** Gemerkter Zustand des Ladelimits (u. a. verlegte Startzeit). */
+    fun chargeLimitState() = ChargeLimit.loadState(prefs)
+
     fun setChargeLimit(p: ChargeLimitPrefs) {
         val v = p.copy(percent = p.percent.coerceIn(ChargeLimitPrefs.MIN_PCT, ChargeLimitPrefs.MAX_PCT))
         settings.chargeLimit = v
@@ -656,7 +659,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         wakeups.addLast(now)
-        command("Fahrzeug aufwecken / Status anfordern", "/VehCharge/state", JSONObject().put("action", "state"))
+        command("Fahrzeug aufwecken / Status anfordern", RemoteCommand.wakeUp())
     }
 
     private fun currentStatusJson(): JSONObject? = prefs.getString("cache_status", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
