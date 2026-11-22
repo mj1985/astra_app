@@ -207,6 +207,10 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
                             InfoRow("Ladegeschwindigkeit", c.rateKmh.num(0, "km/h"))
                         }
                         c.mode?.let { InfoRow("Lademodus", it) }
+                        when {
+                            c.nativeLimitActive -> InfoRow("Ladelimit", "im Auto eingestellt")
+                            ui.chargeLimit.enabled -> InfoRow("Ladelimit", "${ui.chargeLimit.percent} % (App)")
+                        }
                     }
                 }
             }

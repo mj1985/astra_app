@@ -15,6 +15,8 @@ nutzbar auch für Elektroautos und Verbrenner/Mild-Hybride.
 - **Wartung & 12V-Batterie:** Tage/km bis zur Wartung inkl. Fälligkeitsdatum, 12V-Ladezustand mit Bewertung
 - **Fernsteuerung:** Verriegeln/Entriegeln, Vorklimatisierung an/aus, Laden starten/pausieren, Hupe, Lichtsignal,
   Fahrzeug aufwecken (frischer Status) – mit Rückmeldung vom Auto
+- **Ladelimit (App):** für Autos ohne eigenes Limit – die App pausiert das Laden, sobald der Akku das
+  eingestellte Limit (50–95 %) erreicht; geprüft im Hintergrund, kurz vor dem Limit zusätzlich
 - **Antriebsart:** wird aus den Fahrzeugdaten erkannt (oder in den Einstellungen gewählt) und bestimmt,
   welche Bereiche erscheinen (Laden/Klima nur mit Antriebsbatterie, Tanken nur mit Tank). Akku- und Tankgröße
   kommen aus einer Modellliste nach VIN (Quelle: `car_models.yml` von psa_car_controller) und sind änderbar

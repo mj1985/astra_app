@@ -13,6 +13,8 @@ import androidx.lifecycle.viewModelScope
 import com.astraconnect.app.data.AppSettings
 import com.astraconnect.app.data.Backup
 import com.astraconnect.app.data.CategoryRule
+import com.astraconnect.app.data.ChargeLimit
+import com.astraconnect.app.data.ChargeLimitPrefs
 import com.astraconnect.app.data.ChargeEntry
 import com.astraconnect.app.data.ChargeRow
 import com.astraconnect.app.data.CostModel
@@ -114,6 +116,8 @@ data class UiState(
     val chargeEntries: List<ChargeEntry> = emptyList(),
     /** Leiste unten (Ziel-Namen), null = Standard. */
     val bottomBar: List<String>? = null,
+    /** Ladelimit der App. */
+    val chargeLimit: ChargeLimitPrefs = ChargeLimitPrefs(false, ChargeLimitPrefs.DEFAULT_PCT),
 ) {
     val vehicle: Vehicle? get() = vehicles.firstOrNull { it.id == selectedId } ?: vehicles.firstOrNull()
     val commandRunning: Boolean get() = commands.any { !it.final && Instant.now().epochSecond - it.sentAt.epochSecond < 180 }
@@ -159,6 +163,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             fuelEntries = costBook.fuel(),
             chargeEntries = costBook.charges(),
             bottomBar = settings.bottomBar,
+            chargeLimit = settings.chargeLimit,
         )
     )
         private set
@@ -230,6 +235,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .apply()
             val app = getApplication<Application>()
             Notifier.check(app, status)
+            // Ladelimit prüfen, ohne die Anzeige aufzuhalten (kann bis zu 2 Min. auf das Auto warten)
+            viewModelScope.launch(Dispatchers.IO) { ChargeLimit.check(app, status) }
             ui = ui.copy(
                 vehicles = vehicles,
                 selectedId = selected.id,
@@ -498,6 +505,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         else Widgets.updateAll(getApplication())
     }
 
+    fun setChargeLimit(p: ChargeLimitPrefs) {
+        val v = p.copy(percent = p.percent.coerceIn(ChargeLimitPrefs.MIN_PCT, ChargeLimitPrefs.MAX_PCT))
+        settings.chargeLimit = v
+        ui = ui.copy(chargeLimit = v)
+        // Gleich prüfen – vielleicht ist das neue Limit schon erreicht
+        ui.status?.let { s -> viewModelScope.launch(Dispatchers.IO) { ChargeLimit.check(getApplication(), s) } }
+    }
+
     fun setNotify(n: NotifyPrefs) {
         settings.notify = n
         ui = ui.copy(notify = n)
@@ -518,7 +533,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ui = ui.copy(
                 trips = tripStore.load(), prices = settings.prices,
                 profile = resolveProfile(), fuelEntries = costBook.fuel(), chargeEntries = costBook.charges(),
-                bottomBar = settings.bottomBar,
+                bottomBar = settings.bottomBar, chargeLimit = settings.chargeLimit,
             )
             reloadPlaces()
             recomputeBattery()
@@ -628,16 +643,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val chargeStartTime: Pair<Int, Int>
         get() = RemoteControl.ptTime(ui.status?.charging?.nextDelayedTime) ?: (22 to 0)
 
-    fun charging(start: Boolean) {
-        val (h, m) = chargeStartTime
-        command(
-            if (start) "Laden starten" else "Laden pausieren",
-            "/VehCharge",
-            JSONObject()
-                .put("program", JSONObject().put("hour", h).put("minute", m))
-                .put("type", if (start) "immediate" else "delayed"),
-        )
-    }
+    fun charging(start: Boolean) = command(
+        if (start) "Laden starten" else "Laden pausieren",
+        RemoteCommand.charging(start, ui.status?.charging?.nextDelayedTime),
+    )
 
     fun wakeUp() {
         val now = System.currentTimeMillis()

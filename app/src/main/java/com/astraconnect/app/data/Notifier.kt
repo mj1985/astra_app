@@ -35,6 +35,7 @@ object Notifier {
     private const val ID_MAINT = 4
     private const val ID_LOGIN = 5
     private const val ID_REMOTE = 6
+    private const val ID_LIMIT = 7
 
     fun ensureChannels(ctx: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -158,6 +159,9 @@ object Notifier {
     }
 
     fun remoteResult(ctx: Context, title: String, text: String) = post(ctx, ID_REMOTE, CH_REMOTE, title, text)
+
+    /** Ladelimit erreicht bzw. Pausieren fehlgeschlagen. */
+    fun chargeLimit(ctx: Context, title: String, text: String) = post(ctx, ID_LIMIT, CH_CHARGE, title, text)
 
     private fun pct(v: Double?) = v?.let { String.format(Locale.GERMANY, "%.0f %%", it) } ?: "–"
     private fun km(v: Double?) = v?.let { String.format(Locale.GERMANY, "%,.0f km", it) } ?: "–"

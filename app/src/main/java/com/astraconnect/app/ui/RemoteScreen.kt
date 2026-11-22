@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
@@ -41,6 +42,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,8 +63,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.astraconnect.app.AppViewModel
 import com.astraconnect.app.CommandEntry
+import com.astraconnect.app.data.ChargeLimit
+import com.astraconnect.app.data.ChargeLimitPrefs
 import com.astraconnect.app.ui.theme.Bad
 import com.astraconnect.app.ui.theme.Ok
+import kotlin.math.roundToInt
 
 @Composable
 fun RemoteScreen(vm: AppViewModel) {
@@ -189,6 +195,7 @@ private fun RemoteControls(vm: AppViewModel) {
                 )
             }
         }
+        if (ui.powertrain.hasBattery) item { ChargeLimitCard(vm) }
         item {
             SectionCard("Sonstiges") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -271,5 +278,54 @@ private fun CommandRow(c: CommandEntry) {
             Text(c.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(c.sentAt.time(), style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** Ladelimit der App: Laden beim Erreichen des Limits pausieren. */
+@Composable
+private fun ChargeLimitCard(vm: AppViewModel) {
+    val ui = vm.ui
+    val limit = ui.chargeLimit
+    val c = ui.status?.charging
+    // Schieberegler lokal führen, erst beim Loslassen speichern
+    var pct by remember(limit.percent) { mutableStateOf(limit.percent.toFloat()) }
+
+    SectionCard("Ladelimit", Icons.Filled.BatteryChargingFull) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text("Laden bei ${pct.roundToInt()} % pausieren", Modifier.weight(1f))
+            Switch(checked = limit.enabled, onCheckedChange = { vm.setChargeLimit(limit.copy(enabled = it)) })
+        }
+        Slider(
+            value = pct,
+            onValueChange = { pct = it },
+            onValueChangeFinished = { vm.setChargeLimit(limit.copy(percent = pct.roundToInt())) },
+            valueRange = ChargeLimitPrefs.MIN_PCT.toFloat()..ChargeLimitPrefs.MAX_PCT.toFloat(),
+            steps = (ChargeLimitPrefs.MAX_PCT - ChargeLimitPrefs.MIN_PCT) / 5 - 1,
+        )
+        if (c?.nativeLimitActive == true) {
+            Text(
+                "Im Auto ist bereits ein Ladelimit aktiv – die App greift dann nicht ein.",
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else if (limit.enabled && c?.isCharging == true) {
+            val soc = ui.status?.batteryPercent
+            val eta = soc?.let { ChargeLimit.minutesTo(limit.percent, it, c.remaining) }
+            if (eta != null) InfoRow("Limit erreicht in ca.", eta.pretty())
+        }
+        Text(
+            "Für Autos ohne eigenes Ladelimit: Die App prüft beim Laden den Akkustand (im Hintergrund alle 15 Min., " +
+                "kurz vor dem Limit zusätzlich) und pausiert dann – das Auto lädt ab der programmierten Startzeit weiter, " +
+                "die App pausiert erneut. Je nach Ladeleistung kann der Akku einige Prozent über dem Limit landen. " +
+                "Zum Vollladen das Limit ausschalten. Braucht die Hintergrund-Aufzeichnung (Einstellungen) und die eingerichtete Fernsteuerung.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (!ui.backgroundEnabled) {
+            Text(
+                "Die Hintergrund-Aufzeichnung ist aus – das Limit wirkt nur bei geöffneter App.",
+                color = Bad,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }

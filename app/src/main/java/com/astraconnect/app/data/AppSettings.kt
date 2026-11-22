@@ -50,6 +50,14 @@ class AppSettings(context: Context) {
         get() = if (prefs.contains("capacity_kwh")) prefs.getFloat("capacity_kwh", 0f).toDouble() else null
         set(v) = prefs.edit().apply { if (v == null) remove("capacity_kwh") else putFloat("capacity_kwh", v.toFloat()) }.apply()
 
+    /** Ladelimit der App (Laden wird beim Erreichen pausiert). */
+    var chargeLimit: ChargeLimitPrefs
+        get() = ChargeLimitPrefs(
+            prefs.getBoolean("charge_limit_on", false),
+            prefs.getInt("charge_limit_pct", ChargeLimitPrefs.DEFAULT_PCT),
+        )
+        set(v) = prefs.edit().putBoolean("charge_limit_on", v.enabled).putInt("charge_limit_pct", v.percent).apply()
+
     /** Selbst gewählte Antriebsart; null = automatisch erkennen. */
     var powertrainManual: Powertrain?
         get() = Powertrain.of(prefs.getString("powertrain", null))
@@ -94,6 +102,7 @@ class AppSettings(context: Context) {
         .put("tank_l", tankLitersManual ?: JSONObject.NULL)
         .put("capacity_kwh", capacityKwhManual ?: JSONObject.NULL)
         .put("powertrain", powertrainManual?.name ?: JSONObject.NULL)
+        .put("charge_limit_on", chargeLimit.enabled).put("charge_limit_pct", chargeLimit.percent)
         .put("bottom_bar", bottomBar?.joinToString(",") ?: JSONObject.NULL)
 
     fun restore(o: JSONObject) {
@@ -106,5 +115,8 @@ class AppSettings(context: Context) {
         o.num("tank_l")?.let { tankLitersManual = it }
         o.num("capacity_kwh")?.let { capacityKwhManual = it }
         Powertrain.of(o.str("powertrain"))?.let { powertrainManual = it }
+        if (o.has("charge_limit_pct")) {
+            chargeLimit = ChargeLimitPrefs(o.optBoolean("charge_limit_on", false), o.optInt("charge_limit_pct", ChargeLimitPrefs.DEFAULT_PCT))
+        }
     }
 }

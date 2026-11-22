@@ -64,7 +64,10 @@ data class ChargingInfo(
     val remaining: Duration?,
     val rateKmh: Double?,
     val nextDelayedTime: String?,
+    /** „Partial“ = im Auto eingestelltes Ladelimit aktiv (nur neuere Modelle), sonst z. B. „Full“. */
+    val type: String? = null,
 ) {
+    val nativeLimitActive get() = type.equals("Partial", true)
     val statusLabel: String
         get() = when (status?.lowercase()) {
             null -> "–"
@@ -153,6 +156,7 @@ data class VehicleStatus(
                     remaining = it.str("remainingTime")?.let { s -> runCatching { Duration.parse(s) }.getOrNull() },
                     rateKmh = it.num("chargingRate"),
                     nextDelayedTime = it.str("nextDelayedTime"),
+                    type = it.str("type"),
                 )
             }
 

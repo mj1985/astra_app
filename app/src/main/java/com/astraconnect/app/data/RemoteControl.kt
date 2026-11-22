@@ -48,6 +48,20 @@ data class RemoteCommand(val service: String, val params: JSONObject) {
         fun horn() = RemoteCommand("/Horn", JSONObject().put("nb_horn", "2").put("action", "activate"))
         fun lights() = RemoteCommand("/Lights", JSONObject().put("duration", "10").put("action", "activate"))
 
+        /**
+         * Laden sofort starten bzw. pausieren. Pausieren = verzögertes Laden ab der im Auto programmierten
+         * Startzeit ([nextDelayedTime], sonst 22:00).
+         */
+        fun charging(start: Boolean, nextDelayedTime: String?): RemoteCommand {
+            val (h, m) = RemoteControl.ptTime(nextDelayedTime) ?: (22 to 0)
+            return RemoteCommand(
+                "/VehCharge",
+                JSONObject()
+                    .put("program", JSONObject().put("hour", h).put("minute", m))
+                    .put("type", if (start) "immediate" else "delayed"),
+            )
+        }
+
         /** [status] = zuletzt abgerufener Status, damit gespeicherte Programme erhalten bleiben. */
         fun preconditioning(on: Boolean, status: JSONObject?) = RemoteCommand(
             "/ThermalPrecond",

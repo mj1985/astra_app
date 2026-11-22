@@ -37,6 +37,7 @@ class SnapshotWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
             log.record(status)
             prefs.edit().putString("cache_status", json.toString()).apply()
             Notifier.check(ctx, status)
+            ChargeLimit.check(ctx, status)
             Widgets.updateAll(ctx)
 
             val moved = before?.mileage != null && status.mileageKm != null && status.mileageKm > before.mileage + 0.5
