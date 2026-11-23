@@ -48,7 +48,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.Button
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.produceState
 import android.location.Geocoder
 import com.astraconnect.app.data.LatLon
@@ -148,9 +157,13 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
                             Icon(Icons.Filled.LockOpen, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Auf…")
                         }
                         if (pt.hasRemoteClimate) {
-                            FilledTonalButton(onClick = { vm.preconditioning(true) }, enabled = !ui.remoteBusy, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Filled.AcUnit, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Klima")
-                            }
+                            val climateOn = s.preconditioning.equals("Enabled", true)
+                            ClimateButton(
+                                active = climateOn,
+                                enabled = !ui.remoteBusy,
+                                onClick = { vm.preconditioning(!climateOn) },
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
                     ui.commands.firstOrNull()?.let {
@@ -316,4 +329,30 @@ private fun rememberAddress(p: LatLon): String? {
         }
     }
     return address
+}
+
+/**
+ * Schnellknopf Klima. Läuft die Vorklimatisierung, ist er gefüllt in der Akzentfarbe, die Schneeflocke dreht
+ * sich und der Knopf „atmet“ leicht – ein Tipp stoppt sie dann.
+ */
+@Composable
+private fun ClimateButton(active: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    if (!active) {
+        FilledTonalButton(onClick = onClick, enabled = enabled, modifier = modifier) {
+            Icon(Icons.Filled.AcUnit, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Klima", maxLines = 1)
+        }
+        return
+    }
+    val t = rememberInfiniteTransition(label = "klima")
+    val angle by t.animateFloat(0f, 360f, infiniteRepeatable(tween(4000, easing = LinearEasing)), label = "drehen")
+    val scale by t.animateFloat(1f, 1.05f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "atmen")
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+    ) {
+        Icon(Icons.Filled.AcUnit, "Vorklimatisierung läuft", Modifier.size(18.dp).rotate(angle))
+        Spacer(Modifier.width(4.dp))
+        Text("Klima an", maxLines = 1)
+    }
 }

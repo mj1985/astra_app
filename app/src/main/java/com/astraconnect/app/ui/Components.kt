@@ -26,8 +26,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -58,28 +60,40 @@ fun SectionCard(
 
 @Composable
 fun InfoRow(label: String, value: String, valueColor: Color = Color.Unspecified, icon: ImageVector? = null) {
-    // Beschriftung höchstens 40 %, Wert höchstens 60 % der Breite: ein langer Wert bricht um,
-    // statt die Beschriftung auf Buchstabenbreite zusammenzudrücken.
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(Modifier.weight(2f, fill = false), verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) {
-                Icon(icon, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(10.dp))
+    Layout(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        content = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (icon != null) {
+                    Icon(icon, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, fontWeight = FontWeight.Medium, color = valueColor, textAlign = TextAlign.End)
+        },
+    ) { (labelM, valueM), constraints ->
+        val width = constraints.maxWidth
+        val gap = 12.dp.roundToPx()
+        val widths = infoRowWidths(width, gap, labelM.maxIntrinsicWidth(Int.MAX_VALUE), valueM.maxIntrinsicWidth(Int.MAX_VALUE))
+        val label = labelM.measure(Constraints(maxWidth = widths.first))
+        val value = valueM.measure(Constraints(maxWidth = widths.second))
+        val height = maxOf(label.height, value.height)
+        layout(width, height) {
+            label.placeRelative(0, (height - label.height) / 2)
+            value.placeRelative(width - value.width, (height - value.height) / 2)
         }
-        Text(
-            value,
-            Modifier.weight(3f, fill = false).padding(start = 12.dp),
-            fontWeight = FontWeight.Medium,
-            color = valueColor,
-            textAlign = TextAlign.End,
-        )
     }
+}
+
+/**
+ * Breitenaufteilung für [InfoRow]: Passt beides nebeneinander, bekommt die Beschriftung ihre volle Breite.
+ * Sonst behält sie mindestens 40 % (bzw. so viel, wie sie braucht) und nur der Wert bricht um.
+ */
+internal fun infoRowWidths(width: Int, gap: Int, labelNeeds: Int, valueNeeds: Int): Pair<Int, Int> {
+    val labelW = minOf(labelNeeds, maxOf((width * 0.4).toInt(), width - gap - valueNeeds)).coerceIn(0, width)
+    val valueW = (width - gap - labelW).coerceAtLeast(0)
+    return labelW to valueW
 }
 
 @Composable
