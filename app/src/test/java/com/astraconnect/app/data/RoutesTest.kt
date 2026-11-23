@@ -54,6 +54,17 @@ class RoutesTest {
     }
 
     @Test
+    fun pointsOf_keepsTimesSortedWithinTrip() {
+        val track = listOf(
+            TrackPoint(at(6), LatLon(52.53, 13.47)),
+            TrackPoint(at(-5), LatLon(1.0, 1.0)),
+            TrackPoint(at(11), LatLon(52.54, 13.49)), // 1 Min. nach Ankunft – zählt noch
+            TrackPoint(at(3), LatLon(52.52, 13.44)),
+        )
+        assertEquals(listOf(at(3), at(6), at(11)), TripRoute.pointsOf(trip(0, 10), track).map { it.at })
+    }
+
+    @Test
     fun fromTrack_nullWithoutPointsDuringTrip() {
         assertNull(TripRoute.fromTrack(trip(0, 10), listOf(TrackPoint(at(20), LatLon(1.0, 1.0)))))
         assertNull(TripRoute.fromTrack(trip(0, 10), emptyList()))

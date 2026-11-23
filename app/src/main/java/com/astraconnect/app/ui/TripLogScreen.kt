@@ -308,11 +308,21 @@ private fun TripSheet(t: Trip, b: BatteryUse?, capacityKwh: Double, vm: AppViewM
                 Text("Fahrt vom ${t.startedAt.dateLong()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 val route = remember(t.key, vm.ui.routeVersion) { vm.routeFor(t) }
-                TripMiniMap(t, vm.ui.powertrain, route?.points)
+                val waypoints = remember(t.key, vm.ui.routeVersion) { vm.waypointsFor(t) }
+                TripMiniMap(t, vm.ui.powertrain, route?.points, waypoints, interactive = true, height = 240.dp)
+                if (waypoints.isNotEmpty()) {
+                    Text(
+                        "Punkte antippen für die Uhrzeit · mit zwei Fingern zoomen",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 InfoRow(
                     "Streckenverlauf",
-                    route?.let { "grob, ${it.points.size} Punkte" } ?: "nicht aufgezeichnet (gerade Linie)",
+                    if (waypoints.isEmpty()) "nicht aufgezeichnet (gerade Linie)"
+                    else "${waypoints.size} Wegpunkte · ${waypoints.first().at.time()}–${waypoints.last().at.time()} Uhr",
                 )
                 InfoRow("Abfahrt", t.startedAt.dateTime())
                 InfoRow("Ankunft", t.stoppedAt.dateTime())

@@ -44,6 +44,7 @@ import com.astraconnect.app.data.SnapshotWorker
 import com.astraconnect.app.data.StellantisApi
 import com.astraconnect.app.data.Stores
 import com.astraconnect.app.data.TripFollow
+import com.astraconnect.app.data.TrackPoint
 import com.astraconnect.app.data.Trip
 import com.astraconnect.app.data.TripCategory
 import com.astraconnect.app.data.Vehicle
@@ -706,6 +707,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val s = t.startedAt ?: return null
         val e = t.stoppedAt ?: return null
         return TripRoute.fromTrack(t, trackLog.between(s.minus(TripRoute.MARGIN), e.plus(TripRoute.MARGIN)))
+    }
+
+    /** Die einzelnen aufgezeichneten Wegpunkte einer Fahrt (mit Uhrzeit), für die Anzeige als Punkte. */
+    fun waypointsFor(t: Trip): List<TrackPoint> {
+        val s = t.startedAt ?: return emptyList()
+        val e = t.stoppedAt ?: return emptyList()
+        return TripRoute.pointsOf(t, trackLog.between(s.minus(TripRoute.MARGIN), e.plus(TripRoute.MARGIN)))
     }
 
     // ------------------------------------------------------------------ Navigationsziel

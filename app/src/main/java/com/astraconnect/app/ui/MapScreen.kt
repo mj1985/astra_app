@@ -45,6 +45,7 @@ import com.astraconnect.app.AppViewModel
 import com.astraconnect.app.data.LatLon
 import com.astraconnect.app.data.PlaceBook
 import com.astraconnect.app.data.Powertrain
+import com.astraconnect.app.data.TrackPoint
 import com.astraconnect.app.data.Trip
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -144,13 +145,22 @@ class MapIcons(private val ctx: Context, private val accent: Int, private val ri
             })
         }
     }
+
+    /** Aufgezeichneter Wegpunkt: kleiner Punkt. */
+    val waypoint: BitmapDrawable by lazy {
+        icon(10f) { c ->
+            drawCircle(c, c, c, fill(ring))
+            drawCircle(c, c, c - dp(1.5f), fill(accent))
+        }
+    }
 }
 
-private fun MapView.marker(pos: GeoPoint, icon: BitmapDrawable, title: String? = null) {
+private fun MapView.marker(pos: GeoPoint, icon: BitmapDrawable, title: String? = null, snippet: String? = null) {
     overlays += Marker(this).apply {
         position = pos
         this.icon = icon
         this.title = title
+        this.snippet = snippet
         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
         if (title == null) setInfoWindow(null)
     }
@@ -162,8 +172,16 @@ private fun MapView.marker(pos: GeoPoint, icon: BitmapDrawable, title: String? =
 private fun OsmMap(
     modifier: Modifier,
     interactive: Boolean = true,
+    /** Karte liegt in einer scrollbaren Ansicht: Gesten gehören dann der Karte, nicht der Liste. */
+    embedded: Boolean = false,
+    /**
+     * Inhalt nur neu aufbauen, wenn sich dieser Schlüssel ändert (null = bei jeder Neukomposition). Hält bei
+     * bedienbaren Karten Zoom und geöffnete Infoblasen, wenn sich drumherum etwas ändert.
+     */
+    contentKey: Any? = null,
     update: (MapView, MapIcons) -> Unit,
 ) {
+    val applied = remember { arrayOfNulls<Any>(1) }
     val ctx = LocalContext.current
     val dark = isSystemInDarkTheme()
     val accent = MaterialTheme.colorScheme.primary.toArgb()
@@ -179,6 +197,15 @@ private fun OsmMap(
             controller.setZoom(11.0)
             controller.setCenter(GeoPoint(53.92, 10.82))
             if (!interactive) setOnTouchListener { _, _ -> true }
+            else if (embedded) setOnTouchListener { v, e ->
+                // Während die Karte berührt wird, darf die umgebende Liste nicht scrollen
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> v.parent?.requestDisallowInterceptTouchEvent(true)
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
         }
     }
     DisposableEffect(lifecycle) {
@@ -204,6 +231,9 @@ private fun OsmMap(
             m.overlayManager.tilesOverlay.setColorFilter(if (dark) MapStyle.dark else MapStyle.light)
             m.overlayManager.tilesOverlay.loadingBackgroundColor = ring
             m.overlayManager.tilesOverlay.loadingLineColor = ring
+            val key = contentKey?.let { listOf(it, dark, accent) }
+            if (key != null && applied[0] == key) return@AndroidView
+            applied[0] = key
             m.overlays.clear()
             update(m, icons)
             // Quellenangabe (OSM-Lizenz)
@@ -303,14 +333,28 @@ fun MapScreen(vm: AppViewModel) {
 
 /** Kleine, nicht bedienbare Karte mit Start- und Zielpunkt einer Fahrt. */
 @Composable
-fun TripMiniMap(t: Trip, powertrain: Powertrain, route: List<LatLon>? = null, height: Dp = 180.dp) {
+fun TripMiniMap(
+    t: Trip,
+    powertrain: Powertrain,
+    route: List<LatLon>? = null,
+    /** Aufgezeichnete Wegpunkte – als Punkte mit Uhrzeit (antippen). */
+    waypoints: List<TrackPoint> = emptyList(),
+    /** Zoomen und Verschieben erlauben (in den Fahrtdetails). */
+    interactive: Boolean = false,
+    height: Dp = 180.dp,
+) {
     val a = t.startPos?.geo()
     val b = t.endPos?.geo()
     val path = route?.takeIf { it.size >= 2 }?.map { it.geo() }
     if (a == null && b == null && path == null) return
     val color = tripColor(t, powertrain, MaterialTheme.colorScheme.primary.toArgb(), ChartColors.electric.toArgb(), ChartColors.fuel.toArgb())
     Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(14.dp))) {
-        OsmMap(Modifier.fillMaxSize(), interactive = false) { map, icons ->
+        OsmMap(
+            Modifier.fillMaxSize(),
+            interactive = interactive,
+            embedded = interactive,
+            contentKey = listOf(t.key, route, waypoints, color),
+        ) { map, icons ->
             // Streckenverlauf, sonst gerade Linie Start → Ziel
             val line = path ?: listOfNotNull(a, b).takeIf { it.size == 2 }
             line?.let {
@@ -319,8 +363,15 @@ fun TripMiniMap(t: Trip, powertrain: Powertrain, route: List<LatLon>? = null, he
                     if (path == null) outlinePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
                 }
             }
-            (a ?: path?.first())?.let { map.marker(it, icons.ringIcon) }
-            (b ?: path?.last())?.let { map.marker(it, icons.dot) }
+            waypoints.forEach { w ->
+                map.marker(
+                    w.pos.geo(), icons.waypoint,
+                    title = "${w.at.time()} Uhr",
+                    snippet = String.format(java.util.Locale.US, "%.5f, %.5f", w.pos.lat, w.pos.lon),
+                )
+            }
+            (a ?: path?.first())?.let { map.marker(it, icons.ringIcon, if (interactive) "Start ${t.startedAt.time()} Uhr" else null) }
+            (b ?: path?.last())?.let { map.marker(it, icons.dot, if (interactive) "Ziel ${t.stoppedAt.time()} Uhr" else null) }
             map.fit(listOfNotNull(a, b) + path.orEmpty())
         }
     }

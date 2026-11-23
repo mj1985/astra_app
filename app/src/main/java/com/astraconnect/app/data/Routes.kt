@@ -22,13 +22,18 @@ data class TripRoute(val points: List<LatLon>) {
          * (dann bleibt es bei der geraden Linie).
          */
         fun fromTrack(t: Trip, track: List<TrackPoint>): TripRoute? {
-            val from = t.startedAt?.minus(MARGIN) ?: return null
-            val to = t.stoppedAt?.plus(MARGIN) ?: return null
-            val inner = track.filter { !it.at.isBefore(from) && !it.at.isAfter(to) }.sortedBy { it.at }.map { it.pos }
+            val inner = pointsOf(t, track).map { it.pos }
             if (inner.isEmpty()) return null
             val all = listOfNotNull(t.startPos) + inner + listOfNotNull(t.endPos)
             val dedup = all.filterIndexed { i, p -> i == 0 || p != all[i - 1] }
             return TripRoute(dedup).takeIf { it.available }
+        }
+
+        /** Aufgezeichnete Standorte, die zeitlich in die Fahrt fallen (Abfahrt/Ankunft ± [MARGIN]), nach Zeit sortiert. */
+        fun pointsOf(t: Trip, track: List<TrackPoint>): List<TrackPoint> {
+            val from = t.startedAt?.minus(MARGIN) ?: return emptyList()
+            val to = t.stoppedAt?.plus(MARGIN) ?: return emptyList()
+            return track.filter { !it.at.isBefore(from) && !it.at.isAfter(to) }.sortedBy { it.at }
         }
     }
 }
