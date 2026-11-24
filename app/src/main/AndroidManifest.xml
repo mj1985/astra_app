@@ -48,7 +48,7 @@
         <receiver
             android:name=".widget.StatusWidget"
             android:exported="false"
-            android:label="Astra · Laden">
+            android:label="Opel · Laden">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -59,7 +59,7 @@
         <receiver
             android:name=".widget.ControlWidget"
             android:exported="false"
-            android:label="Astra · Steuerung">
+            android:label="Opel · Steuerung">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -70,7 +70,7 @@
         <receiver
             android:name=".widget.CarWidget"
             android:exported="false"
-            android:label="Astra · Fahrzeug">
+            android:label="Opel · Fahrzeug">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -81,7 +81,7 @@
         <receiver
             android:name=".widget.RangeWidget"
             android:exported="false"
-            android:label="Astra · Reichweite">
+            android:label="Opel · Reichweite">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -92,7 +92,7 @@
         <receiver
             android:name=".widget.TripWidget"
             android:exported="false"
-            android:label="Astra · Letzte Fahrt">
+            android:label="Opel · Letzte Fahrt">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
