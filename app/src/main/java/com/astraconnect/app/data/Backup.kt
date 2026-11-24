@@ -57,7 +57,7 @@ class Backup(private val ctx: Context) {
 
     fun restore(text: String): RestoreResult {
         val o = runCatching { JSONObject(text.trim().removePrefix("﻿")) }.getOrNull()
-        if (o == null || o.optString("format") != FORMAT) throw IllegalArgumentException("Die Datei ist keine Astra-Connect-Sicherung.")
+        if (o == null || o.optString("format") != FORMAT) throw IllegalArgumentException("Die Datei ist keine BlitzLink-Sicherung.")
         o.optJSONObject("places")?.let { Stores.places(ctx).restore(it) }
         o.optJSONObject("settings")?.let(settings::restore)
 
@@ -118,7 +118,7 @@ class Backup(private val ctx: Context) {
         if (!force && System.currentTimeMillis() - settings.lastBackupAt < 20 * 3600_000L) return true
         val dir = DocumentFile.fromTreeUri(ctx, tree)?.takeIf { it.canWrite() } ?: return false
         val data = build().toByteArray(Charsets.UTF_8)
-        for (name in listOf("astra_connect_backup.json", "astra_connect_backup_${YearMonth.now()}.json")) {
+        for (name in listOf("blitzlink_backup.json", "blitzlink_backup_${YearMonth.now()}.json")) {
             val f = dir.findFile(name) ?: dir.createFile("application/json", name) ?: continue
             ctx.contentResolver.openOutputStream(f.uri, "wt")?.use { it.write(data) }
         }
@@ -127,7 +127,8 @@ class Backup(private val ctx: Context) {
     }
 
     companion object {
+        /** Kennung im Inhalt – bleibt beim alten Namen, damit ältere Sicherungen lesbar bleiben. */
         const val FORMAT = "astra-connect-backup"
-        fun fileName() = "astra_connect_backup_${LocalDate.now()}.json"
+        fun fileName() = "blitzlink_backup_${LocalDate.now()}.json"
     }
 }

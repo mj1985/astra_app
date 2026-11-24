@@ -94,7 +94,7 @@ fun LoginScreen(vm: AppViewModel) {
         ) {
             Spacer(Modifier.height(24.dp))
             Icon(Icons.Filled.DirectionsCar, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
-            Text("Astra Connect", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("BlitzLink", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(
                 "Melde dich mit deinem MyOpel-Konto an. Der Login läuft über die offizielle Opel-Anmeldeseite – " +
                     "dein Passwort wird nicht in der App gespeichert.",
