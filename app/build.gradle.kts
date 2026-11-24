@@ -29,8 +29,23 @@ android {
         buildConfigField("String", "MYOPEL_SECRET_ALT", secretField("myopel.clientSecret.alt"))
     }
 
+    // Release-Signierung: Keystore und Passwörter kommen aus local.properties (nicht im Repo).
+    // Fehlen die Einträge, wird der Release-Build unsigniert gebaut.
+    val releaseStoreFile = localProps.getProperty("release.storeFile")?.trim()?.takeIf { it.isNotEmpty() }
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = localProps.getProperty("release.storePassword")
+                keyAlias = localProps.getProperty("release.keyAlias")
+                keyPassword = localProps.getProperty("release.keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
