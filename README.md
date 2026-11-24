@@ -110,6 +110,10 @@ Alternativ das Projekt in Android Studio öffnen und auf ▶ drücken.
 - Akku-Verbrauch: nur für Fahrten nach Beginn der Aufzeichnung. Liegen mehrere Fahrten zwischen zwei
   Messpunkten, wird nach Strecke aufgeteilt (≈); wurde dazwischen geladen, ist keine Berechnung möglich.
 
+## Halte mich wach! ☕
+[![Yellow button with a steaming coffee cup and the text Buy me a coffee, in a cheerful banner style](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/mj1985)
+
+
 ## Lizenz
 
 GPL-3.0 – siehe [LICENSE](LICENSE). Teile sind aus Open-Source-Projekten übernommen bzw. portiert:
