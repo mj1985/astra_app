@@ -31,8 +31,9 @@ class AppSettings(context: Context) {
 
     var prices: Prices
         get() = Prices(
-            prefs.getFloat("price_fuel", 1.75f).toDouble(),
-            prefs.getFloat("price_power", 0.35f).toDouble(),
+            // Ohne eigenen Eintrag: Standardpreis grob in die Währung des gewählten Markts übertragen
+            if (prefs.contains("price_fuel")) prefs.getFloat("price_fuel", 0f).toDouble() else Currency.current.fromEuro(1.75),
+            if (prefs.contains("price_power")) prefs.getFloat("price_power", 0f).toDouble() else Currency.current.fromEuro(0.35),
             prefs.getFloat("charge_loss", 10f).toDouble(),
         )
         set(v) {

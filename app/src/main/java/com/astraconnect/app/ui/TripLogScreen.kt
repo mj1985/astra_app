@@ -255,7 +255,7 @@ private fun TripItem(t: Trip, b: BatteryUse?, vm: AppViewModel, onClick: () -> U
             }
             vm.tripCost(t)?.takeIf { it >= 0.01 }?.let { c ->
                 Text(
-                    "Kosten ≈ " + String.format(Locale.GERMANY, "%.2f €", c),
+                    "Kosten ≈ " + c.money(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -334,7 +334,7 @@ private fun TripSheet(t: Trip, b: BatteryUse?, capacityKwh: Double, vm: AppViewM
                 InfoRow("Ziel", listOfNotNull(vm.placeName(t.endPos), place(t.endAddress, t.endPos)).joinToString(" – "))
                 InfoRow("Quelle", t.source.label)
                 if (t.isMerged) InfoRow("Zusammengeführt", "aus ${t.partKeys.size} Fahrten")
-                vm.tripCost(t)?.let { InfoRow("Energiekosten (geschätzt)", String.format(Locale.GERMANY, "%.2f €", it)) }
+                vm.tripCost(t)?.let { InfoRow("Energiekosten (geschätzt)", it.money()) }
                 if (t.fuelLiters != null || t.avgFuel != null) {
                     HorizontalDivider(Modifier.padding(vertical = 12.dp))
                     Text("Kraftstoff", fontWeight = FontWeight.SemiBold)

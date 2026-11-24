@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.astraconnect.app.AppViewModel
 import com.astraconnect.app.data.ApiConfig
+import com.astraconnect.app.data.Currency
 
 @Composable
 fun LoginScreen(vm: AppViewModel) {
@@ -271,7 +272,7 @@ private fun CountryPicker(selected: ApiConfig.Market, enabled: Boolean, onSelect
                 DropdownMenuItem(
                     text = {
                         Text(
-                            "${flag(m.code)}  ${m.name}",
+                            "${flag(m.code)}  ${m.name}" + if (m.currency != Currency.EUR) " · ${m.currency.name}" else "",
                             fontWeight = if (m.code == selected.code) FontWeight.Bold else null,
                         )
                     },

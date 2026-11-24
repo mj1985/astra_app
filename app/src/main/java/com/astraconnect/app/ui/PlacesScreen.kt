@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.astraconnect.app.AppViewModel
+import com.astraconnect.app.data.Currency
 import com.astraconnect.app.data.LatLon
 import com.astraconnect.app.data.Place
 import com.astraconnect.app.data.PlaceBook
@@ -82,7 +83,7 @@ fun PlacesScreen(vm: AppViewModel) {
                     Row(Modifier.fillMaxWidth().clickable { draft = PlaceDraft(p, p.pos, null) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(p.name, fontWeight = FontWeight.SemiBold)
-                            Text("Radius ${p.radiusM.num(0, "m")} · $visits Fahrten" + (p.powerPrice?.let { " · Strom ${it.num(3, "€/kWh")}" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Radius ${p.radiusM.num(0, "m")} · $visits Fahrten" + (p.powerPrice?.let { " · Strom ${it.unitPrice("kWh")}" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { vm.deletePlace(p.id) }) { Icon(Icons.Filled.Delete, "Löschen") }
                     }
@@ -187,7 +188,7 @@ private fun RuleEditor(vm: AppViewModel) {
 private fun PlaceDialog(d: PlaceDraft, onDismiss: () -> Unit, onSave: (String, Double, Double?) -> Unit) {
     var name by remember { mutableStateOf(d.existing?.name.orEmpty()) }
     var radius by remember { mutableStateOf((d.existing?.radiusM ?: 200.0).toInt().toString()) }
-    var power by remember { mutableStateOf(d.existing?.powerPrice?.let { String.format(java.util.Locale.GERMANY, "%.3f", it) }.orEmpty()) }
+    var power by remember { mutableStateOf(d.existing?.powerPrice?.let { String.format(java.util.Locale.GERMANY, "%.${Currency.current.priceDigits}f", it) }.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (d.existing == null) "Ort benennen" else "Ort bearbeiten") },
@@ -204,7 +205,7 @@ private fun PlaceDialog(d: PlaceDraft, onDismiss: () -> Unit, onSave: (String, D
                     label = { Text("Radius (m)") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
-                NumberField("Strompreis beim Laden hier, €/kWh (optional)", power, { power = it })
+                NumberField("Strompreis beim Laden hier, $currencySymbol/kWh (optional)", power, { power = it })
                 Text(
                     "Für die Ladeübersicht: Ladungen an diesem Ort werden mit diesem Preis berechnet. 0 = kostenlos (z. B. beim Arbeitgeber).",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -212,7 +213,7 @@ private fun PlaceDialog(d: PlaceDraft, onDismiss: () -> Unit, onSave: (String, D
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(name.trim(), (radius.toDoubleOrNull() ?: 200.0).coerceIn(50.0, 2000.0), parseNum(power)?.takeIf { it in 0.0..5.0 }) }, enabled = name.isNotBlank()) {
+            TextButton(onClick = { onSave(name.trim(), (radius.toDoubleOrNull() ?: 200.0).coerceIn(50.0, 2000.0), parseNum(power)?.takeIf { it in Currency.current.range(0.0, 5.0) }) }, enabled = name.isNotBlank()) {
                 Text("Speichern")
             }
         },

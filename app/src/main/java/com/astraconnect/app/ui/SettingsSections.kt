@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.Euro
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.ViewWeek
 import androidx.compose.material.icons.filled.Widgets
@@ -50,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.astraconnect.app.AppViewModel
 import com.astraconnect.app.data.Backup
+import com.astraconnect.app.data.Currency
 import com.astraconnect.app.data.NotifyPrefs
 import com.astraconnect.app.data.Powertrain
 import com.astraconnect.app.data.Prices
@@ -146,13 +146,13 @@ private fun SizeHint(text: String, showReset: Boolean, onReset: () -> Unit) {
 fun CostSettings(vm: AppViewModel) {
     val p = vm.ui.prices
     val pt = vm.ui.powertrain
-    var fuel by remember(p) { mutableStateOf(String.format(Locale.GERMANY, "%.3f", p.fuelPerLiter)) }
-    var power by remember(p) { mutableStateOf(String.format(Locale.GERMANY, "%.3f", p.powerPerKwh)) }
+    var fuel by remember(p) { mutableStateOf(String.format(Locale.GERMANY, "%.${Currency.current.priceDigits}f", p.fuelPerLiter)) }
+    var power by remember(p) { mutableStateOf(String.format(Locale.GERMANY, "%.${Currency.current.priceDigits}f", p.powerPerKwh)) }
     var loss by remember(p) { mutableStateOf(String.format(Locale.GERMANY, "%.0f", p.chargeLossPct)) }
-    SectionCard("Kosten", Icons.Filled.Euro) {
+    SectionCard("Kosten", currencyIcon()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (pt.hasFuel) NumberField("Kraftstoff €/l", fuel, { fuel = it }, Modifier.weight(1f))
-            if (pt.hasBattery) NumberField("Strom €/kWh", power, { power = it }, Modifier.weight(1f))
+            if (pt.hasFuel) NumberField("Kraftstoff $currencySymbol/l", fuel, { fuel = it }, Modifier.weight(1f))
+            if (pt.hasBattery) NumberField("Strom $currencySymbol/kWh", power, { power = it }, Modifier.weight(1f))
         }
         if (pt.hasBattery) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

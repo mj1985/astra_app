@@ -16,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
-import androidx.compose.material.icons.filled.Euro
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.FilterChip
@@ -37,6 +36,7 @@ import com.astraconnect.app.AppViewModel
 import com.astraconnect.app.data.History
 import com.astraconnect.app.data.MonthStats
 import com.astraconnect.app.data.Powertrain
+import com.astraconnect.app.data.Currency
 import com.astraconnect.app.data.TripCategory
 import java.time.Instant
 import java.time.YearMonth
@@ -48,7 +48,6 @@ import java.util.Locale
 private val monthShort = DateTimeFormatter.ofPattern("MMM", Locale.GERMANY)
 private val monthLong = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMANY)
 
-private fun Double.eur() = String.format(Locale.GERMANY, "%,.2f €", this)
 
 @Composable
 fun StatsScreen(vm: AppViewModel) {
@@ -128,16 +127,16 @@ private fun overview(scope: androidx.compose.foundation.lazy.LazyListScope, vm: 
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth()) {
-                BigStat(cost.eur(), "Energiekosten", Modifier.weight(1f))
-                BigStat(if (km > 0) (cost / km * 100).eur() else "–", "pro 100 km", Modifier.weight(1f))
+                BigStat(cost.money(), "Energiekosten", Modifier.weight(1f))
+                BigStat(if (km > 0) (cost / km * 100).money() else "–", "pro 100 km", Modifier.weight(1f))
             }
             Text(
                 "Kosten = " + listOfNotNull(
                     if (pt.hasFuel) "Kraftstoff × Literpreis des letzten Tankvorgangs davor" else null,
                     if (pt.hasBattery) "berechneter Akku-Verbrauch × Preis der letzten Ladung davor" else null,
                 ).joinToString(" + ") + ". Ohne Eintrag gelten die Standardpreise (" + listOfNotNull(
-                    if (pt.hasFuel) ui.prices.fuelPerLiter.num(2, "€/l") else null,
-                    if (pt.hasBattery) "${ui.prices.powerPerKwh.num(2, "€/kWh")} + ${ui.prices.chargeLossPct.num(0, "%")} Ladeverluste" else null,
+                    if (pt.hasFuel) ui.prices.fuelPerLiter.unitPrice("l") else null,
+                    if (pt.hasBattery) "${ui.prices.powerPerKwh.unitPrice("kWh")} + ${ui.prices.chargeLossPct.num(0, "%")} Ladeverluste" else null,
                 ).joinToString(", ") + ").",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
@@ -180,14 +179,14 @@ private fun overview(scope: androidx.compose.foundation.lazy.LazyListScope, vm: 
         }
     }
     item {
-        SectionCard("Energiekosten pro Monat", Icons.Filled.Euro) {
+        SectionCard("Energiekosten pro Monat", currencyIcon()) {
             StackedBarChart(
                 labels,
                 listOfNotNull(
                     if (pt.hasBattery) ChartSeries("Strom", ChartColors.electric, months.map { it.costPower }) else null,
                     if (pt.hasFuel) ChartSeries("Kraftstoff", ChartColors.fuel, months.map { it.costFuel }) else null,
                 ),
-                "€", digits = 2, longLabels = long,
+                currencySymbol, digits = Currency.current.digits, longLabels = long,
             )
             val withoutKwh = if (!pt.hasBattery) 0 else trips.count {
                 // Elektroauto: jede Fahrt braucht Strom; Hybrid: nur Fahrten mit Verbrauchsangabe
@@ -203,13 +202,13 @@ private fun overview(scope: androidx.compose.foundation.lazy.LazyListScope, vm: 
         }
     }
     item {
-        SectionCard("Nach Kategorie", Icons.Filled.Euro) {
+        SectionCard("Nach Kategorie", currencyIcon()) {
             TripCategory.entries.forEach { c ->
                 val list = trips.filter { it.category == c }
                 if (list.isNotEmpty()) {
                     val k = list.sumOf { it.distanceKm ?: 0.0 }
                     val e = list.sumOf { vm.tripCost(it) ?: 0.0 }
-                    InfoRow(c.label, "${list.size} Fahrten · ${k.km()} · ${e.eur()}")
+                    InfoRow(c.label, "${list.size} Fahrten · ${k.km()} · ${e.money()}")
                 }
             }
         }
@@ -219,9 +218,9 @@ private fun overview(scope: androidx.compose.foundation.lazy.LazyListScope, vm: 
         SectionCard("Monatstabelle", Icons.Filled.TableChart) {
             TableRow(
                 when (pt) {
-                    Powertrain.PHEV -> listOf("Monat", "km", "el. %", "Liter", "kWh", "€")
-                    Powertrain.BEV -> listOf("Monat", "km", "kWh", "kWh/100", "€")
-                    Powertrain.ICE -> listOf("Monat", "km", "Liter", "l/100", "€")
+                    Powertrain.PHEV -> listOf("Monat", "km", "el. %", "Liter", "kWh", currencySymbol)
+                    Powertrain.BEV -> listOf("Monat", "km", "kWh", "kWh/100", currencySymbol)
+                    Powertrain.ICE -> listOf("Monat", "km", "Liter", "l/100", currencySymbol)
                 },
                 header = true,
             )

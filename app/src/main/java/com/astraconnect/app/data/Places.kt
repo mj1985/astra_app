@@ -17,7 +17,7 @@ data class Place(
     val lat: Double,
     val lon: Double,
     val radiusM: Double = 200.0,
-    /** Strompreis beim Laden an diesem Ort (€/kWh aus dem Netz), null = Standardpreis. */
+    /** Strompreis beim Laden an diesem Ort (je kWh aus dem Netz, Landeswährung), null = Standardpreis. */
     val powerPrice: Double? = null,
 ) {
     val pos get() = LatLon(lat, lon)

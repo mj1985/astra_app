@@ -29,9 +29,17 @@ class AuthRepository(private val store: SecureStore, private val http: OkHttpCli
     /** Gewählter MyOpel-Markt (Land). Bestimmt Locale, Redirect und die Standard-Client-ID. */
     var country: String
         get() = market.code
-        set(v) = store.put(K_COUNTRY, ApiConfig.market(v).code)
+        set(v) {
+            val m = ApiConfig.market(v)
+            store.put(K_COUNTRY, m.code)
+            Currency.current = m.currency
+        }
 
     val market: ApiConfig.Market get() = ApiConfig.market(store.get(K_COUNTRY))
+
+    init {
+        Currency.current = market.currency
+    }
     val locale: String get() = market.locale
     val redirectUri: String get() = market.redirectUri
 

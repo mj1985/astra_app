@@ -199,6 +199,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         auth.country = country
         auth.clientId = clientId
         auth.clientSecret = clientSecret
+        // Neue Landeswährung: nicht selbst gesetzte Standardpreise neu bestimmen
+        ui = ui.copy(prices = settings.prices)
     }
 
     fun onAuthCode(code: String) = viewModelScope.launch {

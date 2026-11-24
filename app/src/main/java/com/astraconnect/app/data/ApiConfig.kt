@@ -20,15 +20,22 @@ object ApiConfig {
     const val DEFAULT_COUNTRY = "DE"
 
     /** Ein Markt der MyOpel-App. Login-Server und Realm sind überall gleich, nur Locale und Client-ID variieren. */
-    data class Market(val code: String, val name: String, val locale: String, val clientId: String = DEFAULT_CLIENT_ID) {
+    data class Market(
+        val code: String,
+        val name: String,
+        val locale: String,
+        val clientId: String = DEFAULT_CLIENT_ID,
+        /** Landeswährung, in der Preise und Kosten angezeigt werden. */
+        val currency: Currency = Currency.EUR,
+    ) {
         val redirectUri: String get() = "$SCHEME://oauth2redirect/${code.lowercase()}"
     }
 
     /** Märkte laut configs.json von „homeassistant-stellantis-vehicles“ (MyOpel), alphabetisch nach Name. */
     val MARKETS: List<Market> = listOf(
         Market("BE", "Belgien", "fr-BE"),
-        Market("BG", "Bulgarien", "bg-BG"),
-        Market("DK", "Dänemark", "da-DK"),
+        Market("BG", "Bulgarien", "bg-BG"), // Euro seit 01.01.2026
+        Market("DK", "Dänemark", "da-DK", currency = Currency.DKK),
         Market("DE", "Deutschland", "de-DE"),
         Market("EE", "Estland", "et-EE", ALT_CLIENT_ID),
         Market("FI", "Finnland", "fi-FI"),
@@ -37,34 +44,34 @@ object ApiConfig {
         Market("GR", "Griechenland", "el-GR"),
         Market("GP", "Guadeloupe", "fr-GP"),
         Market("IE", "Irland", "en-IE"),
-        Market("IS", "Island", "en-IS"),
+        Market("IS", "Island", "en-IS", currency = Currency.ISK),
         Market("IT", "Italien", "it-IT"),
-        Market("JP", "Japan", "ja-JP"),
+        Market("JP", "Japan", "ja-JP", currency = Currency.JPY),
         Market("HR", "Kroatien", "hr-HR"),
         Market("LV", "Lettland", "lv-LV", ALT_CLIENT_ID),
         Market("LT", "Litauen", "lt-LT", ALT_CLIENT_ID),
         Market("LU", "Luxemburg", "fr-LU"),
         Market("MT", "Malta", "en-MT", ALT_CLIENT_ID),
         Market("MQ", "Martinique", "fr-MQ"),
-        Market("NZ", "Neuseeland", "en-NZ", ALT_CLIENT_ID),
+        Market("NZ", "Neuseeland", "en-NZ", ALT_CLIENT_ID, Currency.NZD),
         Market("NL", "Niederlande", "nl-NL"),
-        Market("NO", "Norwegen", "nb-NO"),
+        Market("NO", "Norwegen", "nb-NO", currency = Currency.NOK),
         Market("AT", "Österreich", "de-AT"),
-        Market("PL", "Polen", "pl-PL"),
+        Market("PL", "Polen", "pl-PL", currency = Currency.PLN),
         Market("PT", "Portugal", "pt-PT"),
         Market("RE", "Réunion", "fr-RE"),
-        Market("RO", "Rumänien", "ro-RO"),
-        Market("RU", "Russland", "ru-RU"),
-        Market("SE", "Schweden", "sv-SE"),
-        Market("CH", "Schweiz", "fr-CH"),
-        Market("SG", "Singapur", "en-SG"),
+        Market("RO", "Rumänien", "ro-RO", currency = Currency.RON),
+        Market("RU", "Russland", "ru-RU", currency = Currency.RUB),
+        Market("SE", "Schweden", "sv-SE", currency = Currency.SEK),
+        Market("CH", "Schweiz", "fr-CH", currency = Currency.CHF),
+        Market("SG", "Singapur", "en-SG", currency = Currency.SGD),
         Market("SK", "Slowakei", "sk-SK"),
         Market("SI", "Slowenien", "sl-SI"),
         Market("ES", "Spanien", "es-ES"),
-        Market("TW", "Taiwan", "zh-TW", ALT_CLIENT_ID),
-        Market("CZ", "Tschechien", "cs-CZ"),
-        Market("TR", "Türkei", "tr-TR"),
-        Market("HU", "Ungarn", "hu-HU"),
+        Market("TW", "Taiwan", "zh-TW", ALT_CLIENT_ID, Currency.TWD),
+        Market("CZ", "Tschechien", "cs-CZ", currency = Currency.CZK),
+        Market("TR", "Türkei", "tr-TR", currency = Currency.TRY),
+        Market("HU", "Ungarn", "hu-HU", currency = Currency.HUF),
     )
 
     fun market(code: String?): Market =

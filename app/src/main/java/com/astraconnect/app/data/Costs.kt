@@ -78,11 +78,11 @@ class CostModel(
     private val fuel = fuelEntries.sortedBy { it.at }
     private val charges = chargeRows.filter { it.pricePerBatteryKwh != null && !it.ongoing }.sortedBy { it.start }
 
-    /** € je Liter: letzter eingetragener Tankpreis vor [t]; davor bzw. ohne Eintrag der Standardpreis. */
+    /** Preis je Liter (Landeswährung): letzter eingetragener Tankpreis vor [t]; davor bzw. ohne Eintrag der Standardpreis. */
     fun fuelPriceAt(t: Instant?): Double =
         (if (t == null) fuel.lastOrNull() else fuel.lastOrNull { !it.at.isAfter(t) })?.pricePerLiter ?: prices.fuelPerLiter
 
-    /** € je kWh aus dem Akku. */
+    /** Preis je kWh aus dem Akku (Landeswährung). */
     fun powerPriceAt(t: Instant?): Double =
         t?.let { at -> charges.lastOrNull { !it.start.isAfter(at) }?.pricePerBatteryKwh }
             ?: prices.powerPerKwh * (1 + prices.chargeLossPct / 100.0)

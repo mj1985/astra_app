@@ -514,7 +514,7 @@ class TripStore(private val file: File, private val exportDir: File) {
             .joinToString(" – ")
 
         val sb = StringBuilder("﻿")
-        sb.appendLine("Datum;Abfahrt;Ankunft;Startort;Zielort;km-Stand Start;km-Stand Ende;Strecke km;Kategorie;Zweck / Notiz;Kraftstoff l;Ø Kraftstoff l/100 km;Strom kWh;Akku Start %;Akku Ende %;Akku-Verbrauch kWh (berechnet);kWh/100 km;Kosten €")
+        sb.appendLine("Datum;Abfahrt;Ankunft;Startort;Zielort;km-Stand Start;km-Stand Ende;Strecke km;Kategorie;Zweck / Notiz;Kraftstoff l;Ø Kraftstoff l/100 km;Strom kWh;Akku Start %;Akku Ende %;Akku-Verbrauch kWh (berechnet);kWh/100 km;Kosten ${Currency.current.symbol}")
         trips.sortedBy { it.startedAt ?: Instant.EPOCH }.forEach { t ->
             val b = battery[t.key]
             sb.append(t.startedAt?.let(date::format).orEmpty()).append(';')

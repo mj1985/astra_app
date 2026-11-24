@@ -47,6 +47,7 @@ import com.astraconnect.app.data.ChargeEntry
 import com.astraconnect.app.data.ChargeRow
 import com.astraconnect.app.data.CostBook
 import com.astraconnect.app.data.CostSource
+import com.astraconnect.app.data.Currency
 import com.astraconnect.app.data.FuelEntry
 import com.astraconnect.app.data.FuelRow
 import com.astraconnect.app.data.Place
@@ -58,7 +59,6 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-private fun Double.eur() = String.format(Locale.GERMANY, "%,.2f €", this)
 private fun Double.fmt(d: Int) = String.format(Locale.GERMANY, "%.${d}f", this)
 private val inputFormat = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
 private fun Instant.toInput() = inputFormat.format(atZone(ZoneId.systemDefault()))
@@ -110,15 +110,15 @@ fun ChargingScreen(vm: AppViewModel) {
                 Row(Modifier.fillMaxWidth()) {
                     BigStat("${done.size}", "Ladevorgänge", Modifier.weight(1f))
                     BigStat(kwh.num(0, "kWh"), "aus dem Netz", Modifier.weight(1f))
-                    BigStat(cost.eur(), "Kosten", Modifier.weight(1f))
+                    BigStat(cost.money(), "Kosten", Modifier.weight(1f))
                 }
-                if (kwh > 0.1) InfoRow("Ø Preis", "${(cost / kwh).fmt(3)} €/kWh")
+                if (kwh > 0.1) InfoRow("Ø Preis", (cost / kwh).unitPrice("kWh"))
                 val byPlace = done.groupBy { it.place?.name ?: "Unbekannter Ort" }
                     .map { (n, l) -> Triple(n, l.sumOf { it.kwhGrid }, l.sumOf { it.cost }) }
                     .sortedByDescending { it.third }
                 if (byPlace.size > 1 || byPlace.firstOrNull()?.first != "Unbekannter Ort") {
                     HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                    byPlace.forEach { (n, k, c) -> InfoRow(n, "${k.num(0, "kWh")} · ${c.eur()}", icon = Icons.Filled.Place) }
+                    byPlace.forEach { (n, k, c) -> InfoRow(n, "${k.num(0, "kWh")} · ${c.money()}", icon = Icons.Filled.Place) }
                 }
             }
         }
@@ -168,11 +168,11 @@ private fun ChargeRowCard(r: ChargeRow, onClick: () -> Unit) {
         r.start.dateTime() + if (r.ongoing) " (läuft)" else if (r.manual) " (nachgetragen)" else "",
         modifier = Modifier.clickable(onClick = onClick),
     ) {
-        InfoRow(r.place?.name ?: "Unbekannter Ort", mark + r.cost.eur(), icon = Icons.Filled.Place)
+        InfoRow(r.place?.name ?: "Unbekannter Ort", mark + r.cost.money(), icon = Icons.Filled.Place)
         val soc = if (r.socFrom != null && r.socTo != null) "${r.socFrom.pct()} → ${r.socTo.pct()} · " else ""
         val dur = r.end?.let { " · " + java.time.Duration.between(r.start, it).pretty() }.orEmpty()
         Text(
-            soc + "${r.kwhGrid.num(1, "kWh")}" + (r.pricePerGridKwh?.let { " · ${it.fmt(3)} €/kWh" } ?: "") + dur,
+            soc + "${r.kwhGrid.num(1, "kWh")}" + (r.pricePerGridKwh?.let { " · ${it.unitPrice("kWh")}" } ?: "") + dur,
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         r.entry?.note?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -194,8 +194,8 @@ private fun ChargeDialog(vm: AppViewModel, row: ChargeRow?, onDismiss: () -> Uni
     val manual = row == null || row.manual
     var at by remember { mutableStateOf((row?.start ?: Instant.now()).toInput()) }
     var kwh by remember { mutableStateOf(e?.kwh?.fmt(2) ?: "") }
-    var cost by remember { mutableStateOf(e?.cost?.fmt(2) ?: "") }
-    var price by remember { mutableStateOf(e?.pricePerKwh?.fmt(3) ?: "") }
+    var cost by remember { mutableStateOf(e?.cost?.fmt(Currency.current.digits) ?: "") }
+    var price by remember { mutableStateOf(e?.pricePerKwh?.fmt(Currency.current.priceDigits) ?: "") }
     var placeId by remember { mutableStateOf(e?.placeId) }
     var note by remember { mutableStateOf(e?.note ?: "") }
 
@@ -217,8 +217,8 @@ private fun ChargeDialog(vm: AppViewModel, row: ChargeRow?, onDismiss: () -> Uni
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumberField("Betrag €", cost, { cost = it }, Modifier.weight(1f))
-                    NumberField("oder €/kWh", price, { price = it }, Modifier.weight(1f))
+                    NumberField("Betrag $currencySymbol", cost, { cost = it }, Modifier.weight(1f))
+                    NumberField("oder $currencySymbol/kWh", price, { price = it }, Modifier.weight(1f))
                 }
                 Text("Ort", style = MaterialTheme.typography.labelLarge)
                 PlacePicker(vm.ui.places, placeId, { placeId = it }, if (manual) "keiner" else "automatisch")
@@ -278,7 +278,7 @@ fun FuelScreen(vm: AppViewModel) {
                 val last = ui.fuelEntries.maxByOrNull { it.at }
                 InfoRow(
                     if (last != null) "Getankt am ${last.at.dateLong()}" else "Standardpreis (Einstellungen)",
-                    "${vm.costs.fuelPriceAt(Instant.now()).fmt(3)} €/l",
+                    vm.costs.fuelPriceAt(Instant.now()).unitPrice("l"),
                 )
                 Text(
                     "Trag nach dem Tanken den Literpreis ein – er gilt für alle Fahrten ab diesem Zeitpunkt bis zum nächsten Eintrag. " +
@@ -300,10 +300,10 @@ fun FuelScreen(vm: AppViewModel) {
                 Row(Modifier.fillMaxWidth()) {
                     BigStat("${rows.size}", "Tankvorgänge", Modifier.weight(1f))
                     BigStat(liters.num(0, "l"), "getankt", Modifier.weight(1f))
-                    BigStat(if (priced.isEmpty()) "–" else cost.eur(), "bezahlt¹", Modifier.weight(1f))
+                    BigStat(if (priced.isEmpty()) "–" else cost.money(), "bezahlt¹", Modifier.weight(1f))
                 }
                 val pl = priced.sumOf { it.liters ?: 0.0 }
-                if (pl > 0.1) InfoRow("Ø Preis", "${(cost / pl).fmt(3)} €/l")
+                if (pl > 0.1) InfoRow("Ø Preis", (cost / pl).unitPrice("l"))
             }
         }
         if (rows.isEmpty()) item {
@@ -332,8 +332,8 @@ private fun FuelRowCard(r: FuelRow, onClick: () -> Unit) {
     SectionCard(r.at.dateTime(), modifier = Modifier.clickable(onClick = onClick)) {
         val e = r.entry
         InfoRow(
-            if (e != null) "${e.pricePerLiter.fmt(3)} €/l" else "Preis antippen zum Eintragen",
-            r.cost?.eur() ?: "–",
+            if (e != null) e.pricePerLiter.unitPrice("l") else "Preis antippen zum Eintragen",
+            r.cost?.money() ?: "–",
             valueColor = MaterialTheme.colorScheme.onSurface,
         )
         val est = e?.liters == null
@@ -347,12 +347,12 @@ private fun FuelRowCard(r: FuelRow, onClick: () -> Unit) {
     }
 }
 
-/** Preis zu einem Tankvorgang eintragen. Zwei von drei Angaben (€/l, Liter, Betrag) genügen. */
+/** Preis zu einem Tankvorgang eintragen. Zwei von drei Angaben (Preis je Liter, Liter, Betrag) genügen. */
 @Composable
 private fun FuelDialog(vm: AppViewModel, row: FuelRow?, onDismiss: () -> Unit) {
     val e = row?.entry
     var at by remember { mutableStateOf((e?.at ?: row?.at ?: Instant.now()).toInput()) }
-    var price by remember { mutableStateOf(e?.pricePerLiter?.fmt(3) ?: "") }
+    var price by remember { mutableStateOf(e?.pricePerLiter?.fmt(Currency.current.priceDigits) ?: "") }
     var liters by remember { mutableStateOf(e?.liters?.fmt(2) ?: "") }
     var total by remember { mutableStateOf("") }
     var note by remember { mutableStateOf(e?.note ?: "") }
@@ -370,24 +370,24 @@ private fun FuelDialog(vm: AppViewModel, row: FuelRow?, onDismiss: () -> Unit) {
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(at, { at = it }, label = { Text("Datum, Uhrzeit (TT.MM.JJJJ HH:MM)") }, singleLine = true, isError = time == null)
-                NumberField("Preis €/l", price, { price = it }, Modifier.fillMaxWidth())
+                NumberField("Preis $currencySymbol/l", price, { price = it }, Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NumberField(
                         "Liter" + (row?.refuel?.liters?.let { " (≈ ${it.fmt(0)})" } ?: ""),
                         liters, { liters = it }, Modifier.weight(1f),
                     )
-                    NumberField("Betrag €", total, { total = it }, Modifier.weight(1f))
+                    NumberField("Betrag $currencySymbol", total, { total = it }, Modifier.weight(1f))
                 }
                 OutlinedTextField(note, { note = it }, label = { Text("Notiz (z. B. Tankstelle)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text(
-                    effPrice?.let { "Preis ${it.fmt(3)} €/l" + (effLiters?.let { li -> " · ${li.fmt(2)} l · ${(li * it).eur()}" } ?: "") }
+                    effPrice?.let { "Preis ${it.unitPrice("l")}" + (effLiters?.let { li -> " · ${li.fmt(2)} l · ${(li * it).money()}" } ?: "") }
                         ?: "Preis eingeben – oder Liter und Betrag.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
         confirmButton = {
-            TextButton(enabled = time != null && effPrice != null && effPrice > 0.3 && effPrice < 5, onClick = {
+            TextButton(enabled = time != null && effPrice != null && effPrice in Currency.current.range(0.3, 5.0), onClick = {
                 vm.saveFuelEntry(FuelEntry(e?.id ?: CostBook.newId(), time!!, effPrice!!, effLiters, note.trim()))
                 onDismiss()
             }) { Text("Speichern") }
