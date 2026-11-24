@@ -6,6 +6,7 @@ import org.json.JSONObject
 import java.io.File
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 /** Ein Messpunkt: Stand, den das Auto zu einem Zeitpunkt an den Server gemeldet hat. */
 data class EnergySnapshot(
@@ -42,8 +43,6 @@ data class BatteryUse(
  * Ladestand nach der Fahrt × nutzbare Akkukapazität.
  */
 class EnergyLog(private val file: File) {
-
-    constructor(context: Context) : this(File(context.filesDir, "energy_log.json"))
 
     @Synchronized
     fun all(): List<EnergySnapshot> {
@@ -188,32 +187,41 @@ class EnergyLog(private val file: File) {
     }
 }
 
-/** Gemeinsame Instanzen für App und Hintergrund-Job (gleiche Sperren auf dieselben Dateien). */
+/**
+ * Gemeinsame Instanzen für App, Hintergrund-Job und Widgets (gleiche Sperren auf dieselben Dateien).
+ * Fahrtenbuch, Messpunkte, Standorte und Kosten gibt es je Fahrzeug ([Garage]), Orte & Regeln einmal.
+ */
 object Stores {
-    @Volatile private var trips: TripStore? = null
-    @Volatile private var energy: EnergyLog? = null
+    private val trips = ConcurrentHashMap<String, TripStore>()
+    private val energy = ConcurrentHashMap<String, EnergyLog>()
+    private val costs = ConcurrentHashMap<String, CostBook>()
+    private val track = ConcurrentHashMap<String, TrackLog>()
     @Volatile private var places: PlaceBook? = null
-    @Volatile private var costs: CostBook? = null
 
-    fun costs(ctx: Context): CostBook = costs ?: synchronized(this) {
-        costs ?: CostBook(ctx.applicationContext).also { costs = it }
+    private fun file(ctx: Context, vehicleId: String, name: String) = File(Garage.dir(ctx, vehicleId), name)
+
+    fun trips(ctx: Context, vehicleId: String): TripStore = trips.computeIfAbsent(vehicleId) {
+        TripStore(file(ctx, it, "fahrtenbuch.json"), File(ctx.applicationContext.cacheDir, "exports"))
     }
+
+    fun energy(ctx: Context, vehicleId: String): EnergyLog =
+        energy.computeIfAbsent(vehicleId) { EnergyLog(file(ctx, it, "energy_log.json")) }
+
+    fun costs(ctx: Context, vehicleId: String): CostBook =
+        costs.computeIfAbsent(vehicleId) { CostBook(file(ctx, it, "kosten.json")) }
+
+    fun track(ctx: Context, vehicleId: String): TrackLog =
+        track.computeIfAbsent(vehicleId) { TrackLog(file(ctx, it, "positionen.json")) }
 
     fun places(ctx: Context): PlaceBook = places ?: synchronized(this) {
         places ?: PlaceBook(ctx.applicationContext).also { places = it }
     }
 
-    fun trips(ctx: Context): TripStore = trips ?: synchronized(this) {
-        trips ?: TripStore(ctx.applicationContext).also { trips = it }
-    }
-
-    fun energy(ctx: Context): EnergyLog = energy ?: synchronized(this) {
-        energy ?: EnergyLog(ctx.applicationContext).also { energy = it }
-    }
-
-    @Volatile private var track: TrackLog? = null
-
-    fun track(ctx: Context): TrackLog = track ?: synchronized(this) {
-        track ?: TrackLog(ctx.applicationContext).also { track = it }
+    /** Nach dem Verschieben von Dateien ([Garage.adopt]) neu öffnen – der Standort-Speicher hält einen Zwischenspeicher. */
+    fun forget(vehicleId: String) {
+        trips.remove(vehicleId)
+        energy.remove(vehicleId)
+        costs.remove(vehicleId)
+        track.remove(vehicleId)
     }
 }

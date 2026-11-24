@@ -31,7 +31,7 @@ class CarWidget : BaseWidget() {
             val pt = src.profile.powertrain
             val v = src.views(R.layout.widget_car)
 
-            v.setTextViewText(R.id.w_name, vehicleName(src))
+            v.setTextViewText(R.id.w_name, src.name)
 
             // Akku (Elektro/Hybrid) bzw. Tank (Verbrenner) als Batteriesymbol mit Reichweite daneben
             val charging = pt.hasBattery && s?.charging?.isCharging == true
@@ -45,8 +45,8 @@ class CarWidget : BaseWidget() {
             v.setTextViewText(R.id.w_detail, detail(src, charging))
 
             // Fahrzeugbild: Schrägansicht, bis sie geladen ist die vorhandene Seitenansicht
-            CarImage.ensure(ctx, src.prefs, CarView.FRONT)
-            val car = CarImage.loadWhole(ctx, CarView.FRONT) ?: CarImage.loadWhole(ctx, CarView.SIDE)
+            CarImage.ensure(ctx, src.vehicleId, CarView.FRONT)
+            val car = CarImage.loadWhole(ctx, src.vehicleId, CarView.FRONT) ?: CarImage.loadWhole(ctx, src.vehicleId, CarView.SIDE)
             if (car != null) v.setImageViewBitmap(R.id.w_car, car)
             v.setTextViewText(R.id.w_updated, s?.updatedAt?.let { "↻ " + it.stand(src.now) } ?: "")
             v.setOnClickPendingIntent(R.id.w_top, src.openApp())
@@ -56,8 +56,8 @@ class CarWidget : BaseWidget() {
             fun button(btn: Int, icon: Int, cmd: WidgetCommand, active: Boolean, tint: Int) {
                 v.setInt(btn, "setBackgroundResource", if (active) R.drawable.widget_segment_active else 0)
                 v.setInt(icon, "setColorFilter", tint)
-                v.setInt(icon, "setImageAlpha", if (cmd.key in pending) 90 else 255)
-                v.setOnClickPendingIntent(btn, cmd.pendingIntent(ctx, CarWidget::class.java, REQUEST_BASE))
+                v.setInt(icon, "setImageAlpha", if (cmd.pendingKey(src.vehicleId) in pending) 90 else 255)
+                v.setOnClickPendingIntent(btn, cmd.pendingIntent(ctx, CarWidget::class.java, REQUEST_BASE, src.vehicleId))
             }
 
             val locked = s?.isLocked == true
@@ -83,12 +83,6 @@ class CarWidget : BaseWidget() {
             }
             return v
         }
-
-        /** Eigener Name aus dem Opel-Konto, sonst das Modell (wie in der App). */
-        private fun vehicleName(src: WidgetSource): String =
-            selectedVehicle(src.prefs)?.label?.takeIf { it.isNotBlank() }
-                ?: src.profile.model?.let { "Opel ${it.name}" }
-                ?: "Mein Opel"
 
         /** Zeile(n) unter der Reichweite: beim Laden bzw. Angesteckt der Ladestatus, sonst Akku-/Tankstand. */
         private fun detail(src: WidgetSource, charging: Boolean): String {

@@ -47,8 +47,6 @@ data class TrackPoint(val at: Instant, val pos: LatLon)
  */
 class TrackLog(private val file: File) {
 
-    constructor(context: Context) : this(File(context.filesDir, "positionen.json"))
-
     private var cache: MutableList<TrackPoint>? = null
 
     @Synchronized

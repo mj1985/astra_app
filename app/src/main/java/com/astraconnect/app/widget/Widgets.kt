@@ -7,13 +7,17 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.SizeF
 import android.widget.RemoteViews
 import com.astraconnect.app.MainActivity
+import com.astraconnect.app.data.Garage
+import com.astraconnect.app.data.Vehicle
 import com.astraconnect.app.data.VehicleProfile
+import com.astraconnect.app.data.VehicleSettings
 import com.astraconnect.app.data.VehicleStatus
 import org.json.JSONObject
 import java.time.Instant
@@ -55,12 +59,16 @@ object Widgets {
 
     private fun renderAll(ctx: Context) {
         val mgr = AppWidgetManager.getInstance(ctx)
-        val src = WidgetSource(ctx)
+        // Je Fahrzeug eine Datenquelle – Widgets desselben Fahrzeugs teilen sie sich
+        val sources = mutableMapOf<String, WidgetSource>()
         for ((cls, render) in renderers) {
             val ids = mgr.getAppWidgetIds(ComponentName(ctx, cls))
             if (ids.isEmpty()) continue
-            runCatching { apply(mgr, ids, render(src).sortedBy { it.minHeightDp }) }
-                .onFailure { Log.w(TAG, "${cls.simpleName} fehlgeschlagen", it) }
+            for ((vehicleId, group) in ids.groupBy { WidgetVehicles.vehicleFor(ctx, it) }) {
+                val src = sources.getOrPut(vehicleId) { WidgetSource(ctx, vehicleId) }
+                runCatching { apply(mgr, group.toIntArray(), render(src).sortedBy { it.minHeightDp }) }
+                    .onFailure { Log.w(TAG, "${cls.simpleName} fehlgeschlagen", it) }
+            }
         }
     }
 
@@ -97,25 +105,63 @@ abstract class BaseWidget : AppWidgetProvider() {
         val pending = goAsync()
         Widgets.updateAll(context) { pending.finish() }
     }
+
+    override fun onDeleted(context: Context, ids: IntArray) {
+        ids.forEach { WidgetVehicles.forget(context, it) }
+    }
 }
 
-/** Daten für ein Render-Durchgang – nur das wird geladen, was ein Widget tatsächlich braucht. */
-class WidgetSource(val ctx: Context) {
-    val prefs: SharedPreferences = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+/**
+ * Welches Fahrzeug ein Widget zeigt – beim Platzieren gewählt ([WidgetConfigActivity]). Ohne Wahl
+ * (nur ein Fahrzeug, oder Widgets von vor der Mehr-Fahrzeug-Version) folgt es dem in der App gewählten.
+ */
+object WidgetVehicles {
+    private fun key(widgetId: Int) = "widget_vehicle_$widgetId"
+
+    fun vehicleFor(ctx: Context, widgetId: Int): String {
+        val chosen = Garage.appPrefs(ctx).getString(key(widgetId), null)
+        // Fahrzeug nicht mehr im Konto → dem gewählten folgen
+        val known = Garage.vehicles(ctx)
+        return chosen?.takeIf { id -> known.isEmpty() || known.any { it.id == id } } ?: Garage.selectedId(ctx)
+    }
+
+    /** Gewähltes Fahrzeug (null = dem in der App gewählten folgen). */
+    fun chosen(ctx: Context, widgetId: Int): String? = Garage.appPrefs(ctx).getString(key(widgetId), null)
+
+    fun set(ctx: Context, widgetId: Int, vehicleId: String?) {
+        Garage.appPrefs(ctx).edit().apply { if (vehicleId == null) remove(key(widgetId)) else putString(key(widgetId), vehicleId) }.commit()
+    }
+
+    fun forget(ctx: Context, widgetId: Int) = set(ctx, widgetId, null)
+}
+
+/** Daten eines Fahrzeugs für einen Render-Durchgang – nur das wird geladen, was ein Widget tatsächlich braucht. */
+class WidgetSource(val ctx: Context, val vehicleId: String) {
+    /** Gemeinsame Einstellungen (u. a. laufende Widget-Befehle). */
+    val prefs: SharedPreferences = Garage.appPrefs(ctx)
     val now: Instant = Instant.now()
 
-    val statusJson: JSONObject? by lazy {
-        prefs.getString("cache_status", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
-    }
+    val vehicle: Vehicle? by lazy { Garage.vehicle(ctx, vehicleId) }
+
+    val statusJson: JSONObject? by lazy { VehicleSettings(ctx, vehicleId).cachedStatus }
     val status: VehicleStatus? by lazy { statusJson?.let { runCatching { VehicleStatus.parse(it) }.getOrNull() } }
 
     /** Antriebsart und Größen – bestimmt, welche Teile die Widgets zeigen. */
-    val profile: VehicleProfile by lazy { VehicleProfile.load(ctx) }
+    val profile: VehicleProfile by lazy { VehicleProfile.load(ctx, vehicleId) }
+
+    /** Name wie in der App. */
+    val name: String get() = Garage.displayName(vehicle, profile.model)
 
     fun views(layout: Int) = RemoteViews(ctx.packageName, layout)
 
+    /** Öffnet die App mit diesem Fahrzeug. */
     fun openApp(): PendingIntent = PendingIntent.getActivity(
-        ctx, 0, Intent(ctx, MainActivity::class.java),
+        ctx, 0,
+        Intent(ctx, MainActivity::class.java)
+            // Eigene Daten-URI je Fahrzeug, sonst teilen sich alle Widgets denselben PendingIntent
+            .setData(Uri.parse("astra://fahrzeug/${Uri.encode(vehicleId)}"))
+            .putExtra(MainActivity.EXTRA_VEHICLE, vehicleId)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 }

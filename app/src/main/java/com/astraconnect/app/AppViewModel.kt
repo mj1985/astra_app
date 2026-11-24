@@ -20,6 +20,7 @@ import com.astraconnect.app.data.ChargeRow
 import com.astraconnect.app.data.CostModel
 import com.astraconnect.app.data.FuelEntry
 import com.astraconnect.app.data.FuelRow
+import com.astraconnect.app.data.Garage
 import com.astraconnect.app.data.EnergySnapshot
 import com.astraconnect.app.data.History
 import com.astraconnect.app.data.Notifier
@@ -47,7 +48,9 @@ import com.astraconnect.app.data.TripFollow
 import com.astraconnect.app.data.TrackPoint
 import com.astraconnect.app.data.Trip
 import com.astraconnect.app.data.TripCategory
+import com.astraconnect.app.data.TripStore
 import com.astraconnect.app.data.Vehicle
+import com.astraconnect.app.data.VehicleSettings
 import com.astraconnect.app.data.VehicleStatus
 import com.astraconnect.app.data.arr
 import com.astraconnect.app.data.obj
@@ -129,7 +132,7 @@ data class UiState(
     val powertrain: Powertrain get() = profile.powertrain
     /** Eigener Name aus dem Opel-Konto, sonst das Modell aus der Liste. */
     val vehicleName: String
-        get() = vehicle?.label?.takeIf { it.isNotBlank() } ?: profile.model?.let { "Opel ${it.name}" } ?: "Mein Opel"
+        get() = Garage.displayName(vehicle, profile.model)
     val capacityKwh: Double get() = profile.capacityKwh
     val tankLiters: Double get() = profile.tankLiters
 }
@@ -144,20 +147,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .build()
     val auth = AuthRepository(store, http)
     private val api = StellantisApi(auth, http)
-    private val tripStore = Stores.trips(app)
-    private val energyLog = Stores.energy(app)
     private val remote = RemoteControl(store, auth, http)
     private val placeBook = Stores.places(app)
-    private val costBook = Stores.costs(app)
     private val settings = AppSettings(app)
     private val backup = Backup(app)
-    private val trackLog = Stores.track(app)
     private val wakeups = ArrayDeque<Long>()
+
+    // Daten des gewählten Fahrzeugs – folgen beim Umschalten automatisch (Quelle: „vehicle_id“, siehe Garage)
+    private val vid: String get() = Garage.selectedId(getApplication())
+    private val tripStore get() = Stores.trips(getApplication(), vid)
+    private val energyLog get() = Stores.energy(getApplication(), vid)
+    private val costBook get() = Stores.costs(getApplication(), vid)
+    private val trackLog get() = Stores.track(getApplication(), vid)
+    private val vehicleSettings get() = VehicleSettings(getApplication(), vid)
 
     var ui by mutableStateOf(
         UiState(
             loggedIn = auth.isLoggedIn,
-            profile = VehicleProfile.load(app),
+            profile = VehicleProfile.load(app, Garage.selectedId(app)),
             backgroundEnabled = prefs.getBoolean("bg_enabled", true),
             remoteActivated = remote.isActivated,
             places = placeBook.places(),
@@ -166,18 +173,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             notify = settings.notify,
             backupFolder = settings.backupTreeUri,
             lastBackup = settings.lastBackupAt,
-            fuelEntries = costBook.fuel(),
-            chargeEntries = costBook.charges(),
             bottomBar = settings.bottomBar,
-            chargeLimit = settings.chargeLimit,
         )
     )
         private set
 
     init {
         Notifier.ensureChannels(app)
-        ui = ui.copy(trips = tripStore.load())
         restoreCache()
+        ui = loadVehicleData(ui)
         recomputeBattery()
         if (ui.loggedIn) {
             SnapshotWorker.schedule(app, ui.backgroundEnabled)
@@ -226,39 +230,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refresh() = viewModelScope.launch {
         ui = ui.copy(loading = true, error = null)
         try {
+            val app = getApplication<Application>()
             val vehiclesJson = api.vehiclesRaw()
             val vehicles = vehiclesJson.obj("_embedded").arr("vehicles").objects().map(Vehicle::parse)
-            val selected = vehicles.firstOrNull { it.id == prefs.getString("vehicle_id", null) } ?: vehicles.firstOrNull()
+            val wanted = vid
+            val selected = vehicles.firstOrNull { it.id == wanted } ?: vehicles.firstOrNull()
                 ?: throw IllegalStateException("Kein Fahrzeug in deinem Opel-Konto gefunden.")
-            prefs.edit().putString("vehicle_id", selected.id).apply()
+            prefs.edit().putString("cache_vehicles", vehiclesJson.toString()).apply()
+            if (selected.id != wanted) {
+                // Erstes Mal bzw. Fahrzeug nicht mehr im Konto: Daten ohne Fahrzeug übernehmen und anzeigen
+                Garage.select(app, selected.id)
+                withContext(Dispatchers.IO) { Garage.adopt(app, selected.id) }
+                ui = loadVehicleData(ui.copy(selectedId = selected.id))
+            }
+            ui = ui.copy(vehicles = vehicles, selectedId = selected.id, rawVehicles = vehiclesJson.toString(2))
 
             val statusJson = api.status(selected.id)
             val maintenance = api.maintenance(selected.id)
             val status = VehicleStatus.parse(statusJson, maintenance)
+            // Bewusst für selected.id gespeichert – auch wenn inzwischen umgeschaltet wurde
             val newPoint = withContext(Dispatchers.IO) {
-                energyLog.record(status)
-                trackLog.record(status)
+                Stores.energy(app, selected.id).record(status)
+                Stores.track(app, selected.id).record(status)
             }
-            if (newPoint) ui = ui.copy(routeVersion = ui.routeVersion + 1)
-            TripFollow.onStatus(getApplication(), status)
-            prefs.edit()
-                .putString("cache_vehicles", vehiclesJson.toString())
-                .putString("cache_status", statusJson.toString())
-                .putString("cache_maint", maintenance?.toString())
-                .apply()
-            val app = getApplication<Application>()
-            Notifier.check(app, status)
+            TripFollow.onStatus(app, status)
+            VehicleSettings(app, selected.id).cacheStatus(statusJson, maintenance)
+            Notifier.check(app, selected.id, status)
             // Ladelimit prüfen, ohne die Anzeige aufzuhalten (kann bis zu 2 Min. auf das Auto warten)
-            viewModelScope.launch(Dispatchers.IO) { ChargeLimit.check(app, status) }
+            viewModelScope.launch(Dispatchers.IO) { ChargeLimit.check(app, selected.id, status) }
+            // Während des Abrufs auf ein anderes Fahrzeug umgeschaltet → Anzeige nicht überschreiben
+            if (vid != selected.id) return@launch
             ui = ui.copy(
-                vehicles = vehicles,
-                selectedId = selected.id,
                 status = status,
                 profile = resolveProfile(selected, status),
-                rawVehicles = vehiclesJson.toString(2),
                 rawStatus = statusJson.toString(2),
                 rawMaintenance = maintenance?.toString(2),
                 trips = tripStore.load(),
+                routeVersion = if (newPoint) ui.routeVersion + 1 else ui.routeVersion,
             )
             recomputeBattery()
         } catch (e: AuthExpiredException) {
@@ -270,21 +278,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Fahrzeugliste aus dem Zwischenspeicher (Status kommt mit [loadVehicleData]). */
     private fun restoreCache() {
         runCatching {
             val v = prefs.getString("cache_vehicles", null)?.let(::JSONObject) ?: return
-            val s = prefs.getString("cache_status", null)?.let(::JSONObject) ?: return
-            val m = prefs.getString("cache_maint", null)?.let(::JSONObject)
             ui = ui.copy(
                 vehicles = v.obj("_embedded").arr("vehicles").objects().map(Vehicle::parse),
-                selectedId = prefs.getString("vehicle_id", null),
-                status = VehicleStatus.parse(s, m),
+                selectedId = Garage.selectedId(getApplication()).takeIf { it != Garage.UNASSIGNED },
                 rawVehicles = v.toString(2),
-                rawStatus = s.toString(2),
-                rawMaintenance = m?.toString(2),
             )
-            ui = ui.copy(profile = resolveProfile())
         }
+    }
+
+    /** Alles, was zum gewählten Fahrzeug gehört, aus dessen Ablage in [base] laden. */
+    private fun loadVehicleData(base: UiState): UiState {
+        val vs = vehicleSettings
+        val s = vs.cachedStatus
+        val m = vs.cachedMaintenance
+        val withStatus = base.copy(
+            status = s?.let { runCatching { VehicleStatus.parse(it, m) }.getOrNull() },
+            rawStatus = s?.toString(2),
+            rawMaintenance = m?.toString(2),
+            trips = tripStore.load(),
+            fuelEntries = costBook.fuel(),
+            chargeEntries = costBook.charges(),
+            chargeLimit = vs.chargeLimit,
+            routeVersion = base.routeVersion + 1,
+        )
+        return withStatus.copy(profile = resolveProfile(withStatus.vehicle, withStatus.status))
+    }
+
+    /**
+     * Auf ein anderes Fahrzeug des Kontos umschalten: dessen gespeicherte Daten sofort zeigen,
+     * dann frisch abrufen. Widgets, die dem gewählten Fahrzeug folgen, ziehen mit.
+     */
+    fun selectVehicle(id: String) {
+        if (id == vid || ui.vehicles.none { it.id == id }) return
+        Garage.select(getApplication(), id)
+        ui = loadVehicleData(
+            ui.copy(selectedId = id, commands = emptyList(), tripsInfo = null, navResults = emptyList(), navInfo = null),
+        )
+        recomputeBattery()
+        if (ui.loggedIn) refresh()
     }
 
     // ------------------------------------------------------------------ Fahrtenbuch
@@ -295,18 +330,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return@launch
         }
         ui = ui.copy(tripsSyncing = true, tripsInfo = null)
+        // Fest an dieses Fahrzeug gebunden – auch wenn während des Abrufs umgeschaltet wird
+        val store = Stores.trips(getApplication(), vehicleId)
         try {
-            val since = if (full) null else tripStore.newestStart()?.minusSeconds(3600)
+            val since = if (full) null else store.newestStart()?.minusSeconds(3600)
             val raw = api.trips(vehicleId, since)
-            val added = withContext(Dispatchers.IO) { tripStore.merge(raw) }
-            val auto = applyRulesQuietly()
+            val added = withContext(Dispatchers.IO) { store.merge(raw) }
+            val auto = applyRulesQuietly(store)
+            if (vid != vehicleId) return@launch
             ui = ui.copy(
-                trips = tripStore.load(),
+                trips = store.load(),
                 tripsInfo = (if (added == 0) "Keine neuen Fahrten." else "$added neue Fahrt(en) übernommen.") +
                     if (auto > 0) " $auto automatisch zugeordnet." else ""
             )
             recomputeBattery()
-            resolveAddresses()
+            resolveAddresses(store)
         } catch (e: AuthExpiredException) {
             ui = ui.copy(loggedIn = false, error = e.message)
         } catch (e: Exception) {
@@ -316,19 +354,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun resolveAddresses() = withContext(Dispatchers.IO) {
+    private suspend fun resolveAddresses(store: TripStore) = withContext(Dispatchers.IO) {
         if (!Geocoder.isPresent()) return@withContext
         val geocoder = Geocoder(getApplication(), Locale.GERMANY)
-        val todo = tripStore.loadSingles().filter {
+        val todo = store.loadSingles().filter {
             (it.startAddress == null && it.startPos != null) || (it.endAddress == null && it.endPos != null)
         }.take(40)
         for (t in todo) {
             val s = if (t.startAddress == null) t.startPos?.let { address(geocoder, it) } else null
             val e = if (t.endAddress == null) t.endPos?.let { address(geocoder, it) } else null
-            if (s != null || e != null) tripStore.update(t.key, startAddress = s, endAddress = e)
+            if (s != null || e != null) store.update(t.key, startAddress = s, endAddress = e)
         }
-        val trips = tripStore.load()
-        withContext(Dispatchers.Main) { ui = ui.copy(trips = trips) }
+        val trips = store.load()
+        withContext(Dispatchers.Main) { if (store === tripStore) ui = ui.copy(trips = trips) }
     }
 
     @Suppress("DEPRECATION")
@@ -344,20 +382,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Importiert einen myOpel-Export (*.myop oder ohne Endung) und gleicht ihn mit dem Fahrtenbuch ab. */
     fun importMyop(uri: Uri) = viewModelScope.launch {
         ui = ui.copy(tripsSyncing = true, tripsInfo = null)
+        val store = tripStore
         try {
             val result = withContext(Dispatchers.IO) {
                 val text = getApplication<Application>().contentResolver.openInputStream(uri)
                     ?.use { it.readBytes().toString(Charsets.UTF_8) }
                     ?: throw IllegalStateException("Datei konnte nicht geöffnet werden.")
-                tripStore.importMyop(text, ui.vehicle?.vin)
+                store.importMyop(text, ui.vehicle?.vin)
             }
-            val auto = applyRulesQuietly()
+            val auto = applyRulesQuietly(store)
+            if (store !== tripStore) return@launch
             ui = ui.copy(
-                trips = tripStore.load(),
+                trips = store.load(),
                 tripsInfo = "myOpel-Import: ${result.summary}" + if (auto > 0) " $auto automatisch zugeordnet." else "",
             )
             recomputeBattery()
-            resolveAddresses()
+            resolveAddresses(store)
         } catch (e: org.json.JSONException) {
             ui = ui.copy(tripsInfo = "Import fehlgeschlagen: Die Datei ist kein gültiger myOpel-Export.")
         } catch (e: Exception) {
@@ -476,11 +516,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return n
     }
 
-    private fun applyRulesQuietly(): Int {
+    private fun applyRulesQuietly(store: TripStore = tripStore): Int {
         val places = ui.places
         val rules = ui.rules
         if (rules.isEmpty()) return 0
-        return tripStore.applyRules { PlaceBook.categoryFor(it, places, rules) }
+        return store.applyRules { PlaceBook.categoryFor(it, places, rules) }
     }
 
     private fun reloadPlaces() {
@@ -494,21 +534,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(prices = p)
     }
 
-    /** null = wieder aus Modellliste bzw. Standard. */
+    /** null = wieder aus Modellliste bzw. Standard. Gilt für das gewählte Fahrzeug. */
     fun setTankLiters(l: Double?) {
         if (l != null && l !in 10.0..150.0) return
-        settings.tankLitersManual = l
+        vehicleSettings.tankLitersManual = l
         updateProfile()
     }
 
-    /** null = Antriebsart wieder automatisch erkennen. */
+    /** null = Antriebsart wieder automatisch erkennen. Gilt für das gewählte Fahrzeug. */
     fun setPowertrain(p: Powertrain?) {
-        settings.powertrainManual = p
+        vehicleSettings.powertrainManual = p
         updateProfile()
     }
 
-    private fun resolveProfile(vehicle: Vehicle? = ui.vehicle, status: VehicleStatus? = ui.status) =
-        VehicleProfile.resolve(settings.powertrainManual, settings.capacityKwhManual, settings.tankLitersManual, vehicle?.vin, status)
+    private fun resolveProfile(vehicle: Vehicle? = ui.vehicle, status: VehicleStatus? = ui.status): VehicleProfile {
+        val vs = vehicleSettings
+        return VehicleProfile.resolve(vs.powertrainManual, vs.capacityKwhManual, vs.tankLitersManual, vehicle?.vin, status)
+    }
 
     /** Profil neu bestimmen; bei geänderter Kapazität Verbräuche neu rechnen, Widgets nachziehen. */
     private fun updateProfile() {
@@ -518,15 +560,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         else Widgets.updateAll(getApplication())
     }
 
-    /** Gemerkter Zustand des Ladelimits (u. a. verlegte Startzeit). */
-    fun chargeLimitState() = ChargeLimit.loadState(prefs)
+    /** Gemerkter Zustand des Ladelimits des gewählten Fahrzeugs (u. a. verlegte Startzeit). */
+    fun chargeLimitState() = ChargeLimit.loadState(vehicleSettings.prefs)
 
     fun setChargeLimit(p: ChargeLimitPrefs) {
         val v = p.copy(percent = p.percent.coerceIn(ChargeLimitPrefs.MIN_PCT, ChargeLimitPrefs.MAX_PCT))
-        settings.chargeLimit = v
+        vehicleSettings.chargeLimit = v
         ui = ui.copy(chargeLimit = v)
         // Gleich prüfen – vielleicht ist das neue Limit schon erreicht
-        ui.status?.let { s -> viewModelScope.launch(Dispatchers.IO) { ChargeLimit.check(getApplication(), s) } }
+        val id = vid
+        ui.status?.let { s -> viewModelScope.launch(Dispatchers.IO) { ChargeLimit.check(getApplication(), id, s) } }
     }
 
     fun setNotify(n: NotifyPrefs) {
@@ -546,11 +589,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun importBackup(uri: Uri) = viewModelScope.launch {
         ui = ui.copy(backupInfo = runCatching {
             val r = withContext(Dispatchers.IO) { backup.readFrom(uri) }
-            ui = ui.copy(
-                trips = tripStore.load(), prices = settings.prices,
-                profile = resolveProfile(), fuelEntries = costBook.fuel(), chargeEntries = costBook.charges(),
-                bottomBar = settings.bottomBar, chargeLimit = settings.chargeLimit,
-            )
+            ui = loadVehicleData(ui.copy(prices = settings.prices, bottomBar = settings.bottomBar))
             reloadPlaces()
             recomputeBattery()
             "Wiederhergestellt: ${r.summary}"
@@ -594,10 +633,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Widgets.updateAll(getApplication())
     }
 
-    /** null = wieder aus Modellliste bzw. Standard. */
+    /** null = wieder aus Modellliste bzw. Standard. Gilt für das gewählte Fahrzeug. */
     fun setCapacity(kwh: Double?) {
         if (kwh != null && kwh !in 1.0..150.0) return
-        settings.capacityKwhManual = kwh
+        vehicleSettings.capacityKwhManual = kwh
         updateProfile()
     }
 
@@ -675,7 +714,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         command("Fahrzeug aufwecken / Status anfordern", RemoteCommand.wakeUp())
     }
 
-    private fun currentStatusJson(): JSONObject? = prefs.getString("cache_status", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+    private fun currentStatusJson(): JSONObject? = vehicleSettings.cachedStatus
 
     private fun command(name: String, service: String, params: JSONObject) {
         val vin = ui.vehicle?.vin ?: run {
@@ -805,7 +844,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         auth.logout()
         SnapshotWorker.schedule(getApplication(), false)
         CookieManager.getInstance().removeAllCookies(null)
-        prefs.edit().remove("cache_status").remove("cache_vehicles").remove("cache_maint").apply()
+        val app = getApplication<Application>()
+        (Garage.vehicles(app).map { it.id } + vid).distinct().forEach { VehicleSettings(app, it).clearCache() }
+        prefs.edit().remove("cache_vehicles").apply()
         ui = ui.copy(
             loggedIn = false, loading = false, vehicles = emptyList(), selectedId = null, status = null,
             rawStatus = null, rawMaintenance = null, rawVehicles = null, remoteActivated = false,

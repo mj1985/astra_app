@@ -3,7 +3,6 @@ package com.astraconnect.app.widget
 import android.view.View
 import android.widget.RemoteViews
 import com.astraconnect.app.R
-import com.astraconnect.app.data.VehicleProfile
 import com.astraconnect.app.data.BatteryUse
 import com.astraconnect.app.data.EnergyLog
 import com.astraconnect.app.data.LatLon
@@ -30,10 +29,10 @@ class TripWidget : BaseWidget() {
         /** Kompakt (4×1) und ab 2 Zeilen groß – beide Layouts haben dieselben IDs. */
         fun render(src: WidgetSource): List<Variant> {
             val ctx = src.ctx
-            val trips = Stores.trips(ctx).load().filter { it.startedAt != null }.sortedBy { it.startedAt }
+            val trips = Stores.trips(ctx, src.vehicleId).load().filter { it.startedAt != null }.sortedBy { it.startedAt }
             val t = trips.lastOrNull()
             // Nachbarfahrten mitgeben: teilen sich Fahrten ein Messpunkt-Paar, wird nach Strecke aufgeteilt
-            val use = t?.let { EnergyLog.compute(trips.takeLast(30), Stores.energy(ctx).all(), VehicleProfile.load(ctx).capacityKwh)[it.key] }
+            val use = t?.let { EnergyLog.compute(trips.takeLast(30), Stores.energy(ctx, src.vehicleId).all(), src.profile.capacityKwh)[it.key] }
             val places = if (t != null) Stores.places(ctx).places() else emptyList()
             return listOf(
                 Variant(0f, fill(src, src.views(R.layout.widget_trip_small), t, use, places, compact = true)),

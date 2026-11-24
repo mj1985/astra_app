@@ -291,7 +291,7 @@ private fun ChargeLimitCard(vm: AppViewModel) {
     // Schieberegler lokal führen, erst beim Loslassen speichern
     var pct by remember(limit.percent) { mutableStateOf(limit.percent.toFloat()) }
 
-    SectionCard("Ladelimit", Icons.Filled.BatteryChargingFull) {
+    SectionCard(if (ui.vehicles.size > 1) "Ladelimit · ${ui.vehicleName}" else "Ladelimit", Icons.Filled.BatteryChargingFull) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text("Laden bei ${pct.roundToInt()} % pausieren", Modifier.weight(1f))
             Switch(checked = limit.enabled, onCheckedChange = { vm.setChargeLimit(limit.copy(enabled = it)) })

@@ -87,6 +87,8 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 if (ui.loading) CircularProgressIndicator()
                 else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Auch ohne Daten umschalten können (z. B. wenn der Abruf für dieses Fahrzeug scheitert)
+                    if (ui.vehicles.size > 1) VehicleSwitcher(vm)
                     Text("Noch keine Fahrzeugdaten.")
                     OutlinedButton(onClick = { vm.refresh() }) { Text("Laden") }
                 }
@@ -117,7 +119,7 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
                         )
                         Spacer(Modifier.height(12.dp))
                     }
-                    Text(ui.vehicleName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    VehicleSwitcher(vm)
                     Text(
                         "${pt.label} · Daten ${s.updatedAt.ago()} (${s.updatedAt.dateTime()})",
                         style = MaterialTheme.typography.bodySmall,

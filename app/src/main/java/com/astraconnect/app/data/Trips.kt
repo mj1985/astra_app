@@ -1,6 +1,5 @@
 package com.astraconnect.app.data
 
-import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -225,8 +224,6 @@ data class ImportResult(val read: Int, val matched: Int, val added: Int, val ski
  * jede Teilfahrt hat dieselbe Struktur (ohne Kategorie/Notiz).
  */
 class TripStore(private val file: File, private val exportDir: File) {
-
-    constructor(context: Context) : this(File(context.filesDir, "fahrtenbuch.json"), File(context.cacheDir, "exports"))
 
     /** Eine Einzelfahrt und der Eintrag, in dem sie steht (bei Teilfahrten der zusammengeführte). */
     private data class Leaf(val json: JSONObject, val top: JSONObject)

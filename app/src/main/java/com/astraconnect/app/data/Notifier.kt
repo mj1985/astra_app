@@ -72,13 +72,28 @@ object Notifier {
         NotificationManagerCompat.from(ctx).notify(id, n)
     }
 
+    /** Gilt fürs Konto (Anmeldung). */
     private fun state(ctx: Context) = ctx.getSharedPreferences("notify_state", Context.MODE_PRIVATE)
 
-    /** Vergleicht den neuen Status mit dem zuletzt gesehenen und meldet Änderungen. */
+    /**
+     * Eigene Benachrichtigungs-ID je Fahrzeug, damit sich Meldungen zweier Autos nicht ersetzen.
+     * Bei nur einem Fahrzeug im Konto bleibt es bei der festen ID.
+     */
+    private fun idFor(ctx: Context, vehicleId: String, base: Int): Int =
+        if (!Garage.multiple(ctx)) base else (Garage.safe(vehicleId).hashCode() and 0x3FFFFF) * 16 + base
+
+    /** Bei mehreren Fahrzeugen steht der Name vorn: „Astra: Laden abgeschlossen“. */
+    private fun titled(ctx: Context, vehicleId: String, title: String): String =
+        if (Garage.multiple(ctx)) "${Garage.name(ctx, vehicleId)}: $title" else title
+
+    private fun postFor(ctx: Context, vehicleId: String, base: Int, channel: String, title: String, text: String) =
+        post(ctx, idFor(ctx, vehicleId, base), channel, titled(ctx, vehicleId, title), text)
+
+    /** Vergleicht den neuen Status eines Fahrzeugs mit dem zuletzt gesehenen und meldet Änderungen. */
     @Synchronized
-    fun check(ctx: Context, s: VehicleStatus) {
+    fun check(ctx: Context, vehicleId: String, s: VehicleStatus) {
         val prefs = AppSettings(ctx).notify
-        val st = state(ctx)
+        val st = Garage.notifyState(ctx, vehicleId)
         val updated = s.updatedAt?.toEpochMilli() ?: 0L
         val lastSeen = st.getLong("last_update", 0L)
         if (updated != 0L && updated <= lastSeen) return // nichts Neues
@@ -91,7 +106,7 @@ object Notifier {
             val status = s.charging?.status?.lowercase()
             val full = status == "finished" || (s.batteryPercent ?: 0.0) >= 99
             if (full && prefs.chargeDone) {
-                post(ctx, ID_CHARGE, CH_CHARGE, "Laden abgeschlossen",
+                postFor(ctx, vehicleId, ID_CHARGE, CH_CHARGE, "Laden abgeschlossen",
                     "Akku ${pct(s.batteryPercent)} · elektrisch ${km(s.electricRangeKm)} Reichweite.")
             } else if (!full && prefs.chargeAborted) {
                 val why = when {
@@ -99,7 +114,7 @@ object Notifier {
                     status == "failure" -> "Ladefehler gemeldet"
                     else -> "Ladevorgang gestoppt"
                 }
-                post(ctx, ID_CHARGE, CH_CHARGE, "Laden vorzeitig beendet",
+                postFor(ctx, vehicleId, ID_CHARGE, CH_CHARGE, "Laden vorzeitig beendet",
                     "$why – Akku bei ${pct(s.batteryPercent)}.")
             }
         }
@@ -118,7 +133,7 @@ object Notifier {
             if (s.anyWindowOpen) "Fenster offen" else null,
         )
         if (prefs.openAtNight && night && parked && issues.isNotEmpty() && st.getString("night", null) != nightKey) {
-            post(ctx, ID_NIGHT, CH_ALERT, "Auto ist ${issues.joinToString(", ")}",
+            postFor(ctx, vehicleId, ID_NIGHT, CH_ALERT, "Auto ist ${issues.joinToString(", ")}",
                 "Stand ${s.updatedAt?.atZone(ZoneId.systemDefault())?.toLocalTime()?.withNano(0) ?: "unbekannt"}. " +
                     "Zum Verriegeln die App oder das Widget verwenden.")
             edit.putString("night", nightKey)
@@ -127,7 +142,7 @@ object Notifier {
         // --- 12-V-Batterie, einmal pro Tag
         val v12 = s.battery12V
         if (prefs.battery12V && v12 != null && v12 < prefs.battery12VThreshold && st.getString("v12", null) != today) {
-            post(ctx, ID_12V, CH_ALERT, "12-V-Batterie schwach (${pct(v12)})",
+            postFor(ctx, vehicleId, ID_12V, CH_ALERT, "12-V-Batterie schwach (${pct(v12)})",
                 "Längere Standzeiten vermeiden oder die Batterie prüfen lassen.")
             edit.putString("v12", today)
         }
@@ -139,7 +154,7 @@ object Notifier {
         val lastMaint = st.getString("maint", null)?.let(LocalDate::parse)
         if (prefs.maintenance && due && (lastMaint == null || lastMaint.plusDays(7) <= LocalDate.now())) {
             val parts = listOfNotNull(days?.let { "in ${it.toInt()} Tagen" }, kmLeft?.let { "in ${km(it)}" })
-            post(ctx, ID_MAINT, CH_ALERT, "Wartung bald fällig", "Nächste Wartung ${parts.joinToString(" bzw. ")}.")
+            postFor(ctx, vehicleId, ID_MAINT, CH_ALERT, "Wartung bald fällig", "Nächste Wartung ${parts.joinToString(" bzw. ")}.")
             edit.putString("maint", today)
         }
         edit.apply()
@@ -158,10 +173,12 @@ object Notifier {
         NotificationManagerCompat.from(ctx).cancel(ID_LOGIN)
     }
 
-    fun remoteResult(ctx: Context, title: String, text: String) = post(ctx, ID_REMOTE, CH_REMOTE, title, text)
+    fun remoteResult(ctx: Context, vehicleId: String, title: String, text: String) =
+        postFor(ctx, vehicleId, ID_REMOTE, CH_REMOTE, title, text)
 
     /** Ladelimit erreicht bzw. Pausieren fehlgeschlagen. */
-    fun chargeLimit(ctx: Context, title: String, text: String) = post(ctx, ID_LIMIT, CH_CHARGE, title, text)
+    fun chargeLimit(ctx: Context, vehicleId: String, title: String, text: String) =
+        postFor(ctx, vehicleId, ID_LIMIT, CH_CHARGE, title, text)
 
     private fun pct(v: Double?) = v?.let { String.format(Locale.GERMANY, "%.0f %%", it) } ?: "–"
     private fun km(v: Double?) = v?.let { String.format(Locale.GERMANY, "%,.0f km", it) } ?: "–"

@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
+import android.net.Uri
 import android.view.View
 import android.widget.RemoteViews
 import androidx.work.Constraints
@@ -23,16 +24,14 @@ import androidx.work.workDataOf
 import com.astraconnect.app.R
 import com.astraconnect.app.data.AuthExpiredException
 import com.astraconnect.app.data.AuthRepository
+import com.astraconnect.app.data.Garage
 import com.astraconnect.app.data.Notifier
 import com.astraconnect.app.data.RemoteCommand
 import com.astraconnect.app.data.RemoteControl
 import com.astraconnect.app.data.SecureStore
 import com.astraconnect.app.data.StellantisApi
-import com.astraconnect.app.data.Vehicle
+import com.astraconnect.app.data.VehicleSettings
 import com.astraconnect.app.data.VehicleStatus
-import com.astraconnect.app.data.arr
-import com.astraconnect.app.data.obj
-import com.astraconnect.app.data.objects
 import com.astraconnect.app.ui.pct
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -75,11 +74,19 @@ enum class WidgetCommand(
         )
     }
 
-    /** Taste, die diesen Befehl sendet (Broadcast an das Widget [widget]). */
-    fun pendingIntent(ctx: Context, widget: Class<out BaseWidget>, requestBase: Int): PendingIntent {
-        val intent = Intent(ctx, widget).setAction(ControlWidget.ACTION_COMMAND).putExtra(ControlWidget.EXTRA_CMD, name)
+    /** Taste, die diesen Befehl an das Fahrzeug [vehicleId] sendet (Broadcast an das Widget [widget]). */
+    fun pendingIntent(ctx: Context, widget: Class<out BaseWidget>, requestBase: Int, vehicleId: String): PendingIntent {
+        val intent = Intent(ctx, widget).setAction(ControlWidget.ACTION_COMMAND)
+            // Daten-URI je Fahrzeug und Befehl: Extras allein unterscheiden PendingIntents nicht –
+            // sonst würde die Taste eines Widgets für Auto A den Befehl an Auto B schicken
+            .setData(Uri.parse("astra://befehl/${Uri.encode(vehicleId)}/$name"))
+            .putExtra(ControlWidget.EXTRA_CMD, name)
+            .putExtra(ControlWidget.EXTRA_VEHICLE, vehicleId)
         return PendingIntent.getBroadcast(ctx, requestBase + ordinal, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
+
+    /** Merkschlüssel „läuft gerade“ – je Fahrzeug und Taste. */
+    fun pendingKey(vehicleId: String) = "${Garage.safe(vehicleId)}/$key"
 }
 
 /**
@@ -96,17 +103,19 @@ class ControlWidget : BaseWidget() {
     companion object {
         const val ACTION_COMMAND = "com.astraconnect.app.WIDGET_COMMAND"
         const val EXTRA_CMD = "cmd"
+        const val EXTRA_VEHICLE = "vehicle"
 
         /** Tastendruck aus einem Widget: Befehl vormerken (Taste zeigt „Sende …“) und im Hintergrund senden. */
         internal fun handleCommand(context: Context, intent: Intent) {
             if (intent.action != ACTION_COMMAND) return
             val cmd = intent.getStringExtra(EXTRA_CMD)?.let { runCatching { WidgetCommand.valueOf(it) }.getOrNull() } ?: return
-            if (!PendingCommands.add(context, cmd.key)) return // läuft schon
+            val vehicleId = intent.getStringExtra(EXTRA_VEHICLE) ?: Garage.selectedId(context)
+            if (!PendingCommands.add(context, cmd.pendingKey(vehicleId))) return // läuft schon
             Widgets.updateAll(context)
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "widget_command", ExistingWorkPolicy.APPEND_OR_REPLACE,
                 OneTimeWorkRequestBuilder<WidgetCommandWorker>()
-                    .setInputData(workDataOf(EXTRA_CMD to cmd.name))
+                    .setInputData(workDataOf(EXTRA_CMD to cmd.name, EXTRA_VEHICLE to vehicleId))
                     .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                     .build(),
             )
@@ -136,27 +145,27 @@ class ControlWidget : BaseWidget() {
             val v = src.views(R.layout.widget_control)
             val pending = PendingCommands.get(src.prefs)
 
-            fun button(key: String, btn: Int, icon: Int, label: Int, text: String, cmd: WidgetCommand, active: Boolean, tint: Int? = null) {
-                val busy = key in pending
+            fun button(btn: Int, icon: Int, label: Int, text: String, cmd: WidgetCommand, active: Boolean, tint: Int? = null) {
+                val busy = cmd.pendingKey(src.vehicleId) in pending
                 v.setTextViewText(label, if (busy) "Sende …" else text)
                 v.setInt(icon, "setBackgroundResource", if (active) R.drawable.widget_round_bg_active else R.drawable.widget_round_bg)
                 v.setInt(icon, "setColorFilter", if (active) COLOR_DARK else tint ?: Color.WHITE)
                 v.setInt(icon, "setImageAlpha", if (busy) 110 else 255)
-                v.setOnClickPendingIntent(btn, cmd.pendingIntent(ctx, ControlWidget::class.java, 100))
+                v.setOnClickPendingIntent(btn, cmd.pendingIntent(ctx, ControlWidget::class.java, 100, src.vehicleId))
             }
 
             val climateOn = s?.preconditioning.equals("Enabled", true)
-            button("climate", R.id.w_btn_climate, R.id.w_icon_climate, R.id.w_label_climate,
+            button(R.id.w_btn_climate, R.id.w_icon_climate, R.id.w_label_climate,
                 if (climateOn) "Klima an" else "Klima",
                 if (climateOn) WidgetCommand.CLIMATE_OFF else WidgetCommand.CLIMATE_ON, active = climateOn)
-            button("horn", R.id.w_btn_horn, R.id.w_icon_horn, R.id.w_label_horn, "Hupe", WidgetCommand.HORN, false)
-            button("light", R.id.w_btn_light, R.id.w_icon_light, R.id.w_label_light, "Licht", WidgetCommand.LIGHTS, false)
+            button(R.id.w_btn_horn, R.id.w_icon_horn, R.id.w_label_horn, "Hupe", WidgetCommand.HORN, false)
+            button(R.id.w_btn_light, R.id.w_icon_light, R.id.w_label_light, "Licht", WidgetCommand.LIGHTS, false)
             val locked = s?.isLocked == true
-            button("lock", R.id.w_btn_lock, R.id.w_icon_lock, R.id.w_label_lock,
+            button(R.id.w_btn_lock, R.id.w_icon_lock, R.id.w_label_lock,
                 if (locked) "Verriegelt" else "Verriegeln", WidgetCommand.LOCK, false, tint = if (locked) COLOR_OK else null)
 
-            CarImage.ensure(ctx, src.prefs)
-            val car = CarImage.load(ctx, carBoxAspect(ctx))
+            CarImage.ensure(ctx, src.vehicleId)
+            val car = CarImage.load(ctx, src.vehicleId, carBoxAspect(ctx))
             if (car != null) v.setImageViewBitmap(R.id.w_car, car)
             val pt = src.profile.powertrain
             v.setTextViewText(R.id.w_car_soc, s?.batteryPercent.pct())
@@ -187,10 +196,10 @@ internal object PendingCommands {
 
     fun get(prefs: SharedPreferences): Set<String> = entries(prefs).keys
 
-    /** false, wenn derselbe Befehl schon unterwegs ist. */
+    /** false, wenn derselbe Befehl ([WidgetCommand.pendingKey]) schon unterwegs ist. */
     @Synchronized
     fun add(ctx: Context, key: String): Boolean {
-        val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+        val prefs = Garage.appPrefs(ctx)
         val current = entries(prefs)
         if (key in current) return false
         save(prefs, current + (key to System.currentTimeMillis()))
@@ -199,7 +208,7 @@ internal object PendingCommands {
 
     @Synchronized
     fun remove(ctx: Context, key: String) {
-        val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+        val prefs = Garage.appPrefs(ctx)
         save(prefs, entries(prefs) - key)
     }
 
@@ -214,67 +223,56 @@ class WidgetCommandWorker(ctx: Context, params: WorkerParameters) : CoroutineWor
         val ctx = applicationContext
         val cmd = inputData.getString(ControlWidget.EXTRA_CMD)
             ?.let { runCatching { WidgetCommand.valueOf(it) }.getOrNull() } ?: return Result.success()
+        val vehicleId = inputData.getString(ControlWidget.EXTRA_VEHICLE) ?: Garage.selectedId(ctx)
         val store = SecureStore(ctx)
         val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).build()
         val auth = AuthRepository(store, http)
         val remote = RemoteControl(store, auth, http)
         val failed = "${cmd.label} fehlgeschlagen"
+        fun report(title: String, text: String) = Notifier.remoteResult(ctx, vehicleId, title, text)
         try {
             if (!auth.isLoggedIn) {
-                Notifier.remoteResult(ctx, failed, "Nicht bei Opel angemeldet – bitte die App öffnen.")
+                report(failed, "Nicht bei Opel angemeldet – bitte die App öffnen.")
                 return Result.success()
             }
             if (!remote.isActivated) {
-                Notifier.remoteResult(ctx, failed, "Die Fernsteuerung ist noch nicht eingerichtet (App → Fernsteuerung).")
+                report(failed, "Die Fernsteuerung ist noch nicht eingerichtet (App → Fernsteuerung).")
                 return Result.success()
             }
-            val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
-            val vehicleId = prefs.getString("vehicle_id", null)
-            val vin = selectedVehicle(prefs)?.vin?.takeIf { it.isNotBlank() }
-            if (vin == null) {
-                Notifier.remoteResult(ctx, failed, "Kein Fahrzeug bekannt – bitte einmal die App öffnen.")
+            val vehicle = Garage.vehicle(ctx, vehicleId)
+            val vin = vehicle?.vin?.takeIf { it.isNotBlank() }
+            if (vehicle == null || vin == null) {
+                report(failed, "Kein Fahrzeug bekannt – bitte einmal die App öffnen.")
                 return Result.success()
             }
-            val statusJson = prefs.getString("cache_status", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
-            val c = cmd.command(statusJson)
+            val settings = VehicleSettings(ctx, vehicle.id)
+            val c = cmd.command(settings.cachedStatus)
             val id = remote.send(vin, c.service, c.params)
             val result = withTimeoutOrNull(120_000) { remote.updates.first { it.correlationId == id && it.final } }
             when {
-                result == null -> Notifier.remoteResult(ctx, "${cmd.label} gesendet", "Keine Rückmeldung vom Auto innerhalb von 2 Minuten.")
+                result == null -> report("${cmd.label} gesendet", "Keine Rückmeldung vom Auto innerhalb von 2 Minuten.")
                 result.success -> {
-                    cmd.doneTitle?.let { Notifier.remoteResult(ctx, it, result.label) }
-                    // Neuen Stand holen, damit Klima-/Schloss-Taste stimmen
-                    if (vehicleId != null && cmd != WidgetCommand.HORN && cmd != WidgetCommand.LIGHTS) {
-                        runCatching {
-                            val json = StellantisApi(auth, http).status(vehicleId)
-                            prefs.edit().putString("cache_status", json.toString()).apply()
-                        }
+                    cmd.doneTitle?.let { report(it, result.label) }
+                    // Neuen Stand holen, damit Klima-/Schloss-/Lade-Taste stimmen
+                    if (cmd != WidgetCommand.HORN && cmd != WidgetCommand.LIGHTS) {
+                        runCatching { settings.cacheStatus(StellantisApi(auth, http).status(vehicle.id)) }
                     }
                 }
-                else -> Notifier.remoteResult(ctx, failed, result.label)
+                else -> report(failed, result.label)
             }
             return Result.success()
         } catch (e: AuthExpiredException) {
             Notifier.loginExpired(ctx)
             return Result.success()
         } catch (e: Exception) {
-            Notifier.remoteResult(ctx, failed, e.message ?: e.toString())
+            report(failed, e.message ?: e.toString())
             return Result.success()
         } finally {
             remote.disconnect()
-            PendingCommands.remove(ctx, cmd.key)
+            PendingCommands.remove(ctx, cmd.pendingKey(vehicleId))
             Widgets.updateAll(ctx)
         }
     }
-}
-
-internal fun selectedVehicle(prefs: SharedPreferences): Vehicle? {
-    val id = prefs.getString("vehicle_id", null)
-    return prefs.getString("cache_vehicles", null)
-        ?.let { runCatching { JSONObject(it) }.getOrNull() }
-        .obj("_embedded").arr("vehicles").objects()
-        .let { list -> list.firstOrNull { it.optString("id") == id } ?: list.firstOrNull() }
-        ?.let { runCatching { Vehicle.parse(it) }.getOrNull() }
 }
 
 /**
@@ -313,37 +311,39 @@ internal object CarImage {
     private const val MAX_KEEP = 0.88
     private const val MAX_HEIGHT = 480
 
-    private fun file(ctx: Context, cv: CarView) = File(ctx.filesDir, cv.fileName)
+    /** Bilder liegen beim Fahrzeug ([Garage.dir]), gemerkte URLs in dessen Einstellungen. */
+    private fun file(ctx: Context, vehicleId: String, cv: CarView) = File(Garage.dir(ctx, vehicleId), cv.fileName)
 
-    /** Lädt das Bild im Hintergrund nach, wenn es fehlt oder sich die URL geändert hat. */
-    fun ensure(ctx: Context, prefs: SharedPreferences, cv: CarView = CarView.SIDE) {
-        val url = selectedVehicle(prefs)?.pictureUrl?.let(cv::url) ?: return
-        if (prefs.getString(cv.keyUrl, null) == url && file(ctx, cv).exists()) return
+    /** Lädt das Bild des Fahrzeugs im Hintergrund nach, wenn es fehlt oder sich die URL geändert hat. */
+    fun ensure(ctx: Context, vehicleId: String, cv: CarView = CarView.SIDE) {
+        val url = Garage.vehicle(ctx, vehicleId)?.pictureUrl?.let(cv::url) ?: return
+        val prefs = Garage.prefs(ctx, vehicleId)
+        if (prefs.getString(cv.keyUrl, null) == url && file(ctx, vehicleId, cv).exists()) return
         // Fehlversuche höchstens alle 6 Stunden wiederholen
         val tried = prefs.getString(cv.keyTried, null)
         if (tried != null && tried.substringBefore('|') == url &&
             System.currentTimeMillis() - (tried.substringAfter('|').toLongOrNull() ?: 0) < 6 * 3600_000L
         ) return
         WorkManager.getInstance(ctx).enqueueUniqueWork(
-            cv.workName, ExistingWorkPolicy.KEEP,
+            "${cv.workName}_${Garage.safe(vehicleId)}", ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<CarImageWorker>()
-                .setInputData(workDataOf(CarImageWorker.KEY_VIEW to cv.name))
+                .setInputData(workDataOf(CarImageWorker.KEY_VIEW to cv.name, CarImageWorker.KEY_VEHICLE to vehicleId))
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build(),
         )
     }
 
     /** Ganzes Bild der Ansicht [cv], verkleinert auf höchstens [maxHeight] Pixel Höhe. */
-    fun loadWhole(ctx: Context, cv: CarView, maxHeight: Int = 360): Bitmap? = runCatching {
-        val src = BitmapFactory.decodeFile(file(ctx, cv).path) ?: return null
+    fun loadWhole(ctx: Context, vehicleId: String, cv: CarView, maxHeight: Int = 360): Bitmap? = runCatching {
+        val src = BitmapFactory.decodeFile(file(ctx, vehicleId, cv).path) ?: return null
         if (src.height <= maxHeight) return src
         val scale = maxHeight.toFloat() / src.height
         Bitmap.createScaledBitmap(src, (src.width * scale).roundToInt().coerceAtLeast(1), maxHeight, true)
     }.getOrNull()
 
     /** Seitenansicht passend zum Seitenverhältnis [boxAspect] (Breite/Höhe) der Bildfläche im Widget. */
-    fun load(ctx: Context, boxAspect: Double): Bitmap? = runCatching {
-        val src = BitmapFactory.decodeFile(file(ctx, CarView.SIDE).path) ?: return null
+    fun load(ctx: Context, vehicleId: String, boxAspect: Double): Bitmap? = runCatching {
+        val src = BitmapFactory.decodeFile(file(ctx, vehicleId, CarView.SIDE).path) ?: return null
         val keepFrac = keepFraction(src.width, src.height, boxAspect)
         val keep = (src.width * keepFrac).roundToInt().coerceIn(1, src.width)
         val scale = minOf(1f, MAX_HEIGHT.toFloat() / src.height)
@@ -358,9 +358,9 @@ internal object CarImage {
         return (boxAspect * height / width).coerceIn(MIN_KEEP, MAX_KEEP)
     }
 
-    suspend fun download(ctx: Context, cv: CarView) = withContext(Dispatchers.IO) {
-        val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
-        val url = selectedVehicle(prefs)?.pictureUrl?.let(cv::url) ?: return@withContext
+    suspend fun download(ctx: Context, vehicleId: String, cv: CarView) = withContext(Dispatchers.IO) {
+        val prefs = Garage.prefs(ctx, vehicleId)
+        val url = Garage.vehicle(ctx, vehicleId)?.pictureUrl?.let(cv::url) ?: return@withContext
         prefs.edit().putString(cv.keyTried, "$url|${System.currentTimeMillis()}").apply()
         val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).build()
         val bytes = http.newCall(Request.Builder().url(url).build()).execute().use { r ->
@@ -374,8 +374,9 @@ internal object CarImage {
         val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
             ?: error("Bild nicht lesbar")
         val clean = cleanup(decoded)
-        val target = file(ctx, cv)
-        val tmp = File(ctx.filesDir, "${cv.fileName}.tmp")
+        val target = file(ctx, vehicleId, cv)
+        target.parentFile?.mkdirs()
+        val tmp = File(target.parentFile, "${cv.fileName}.tmp")
         tmp.outputStream().use { clean.compress(Bitmap.CompressFormat.PNG, 100, it) }
         if (!tmp.renameTo(target)) { target.delete(); tmp.renameTo(target) }
         prefs.edit().putString(cv.keyUrl, url).apply()
@@ -430,7 +431,8 @@ internal object CarImage {
 class CarImageWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         val cv = inputData.getString(KEY_VIEW)?.let { runCatching { CarView.valueOf(it) }.getOrNull() } ?: CarView.SIDE
-        runCatching { CarImage.download(applicationContext, cv) }
+        val vehicleId = inputData.getString(KEY_VEHICLE) ?: Garage.selectedId(applicationContext)
+        runCatching { CarImage.download(applicationContext, vehicleId, cv) }
             .onFailure { android.util.Log.w("CarImage", "Fahrzeugbild ($cv) nicht geladen", it) }
         Widgets.updateAll(applicationContext)
         return Result.success()
@@ -438,5 +440,6 @@ class CarImageWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
 
     companion object {
         const val KEY_VIEW = "view"
+        const val KEY_VEHICLE = "vehicle"
     }
 }

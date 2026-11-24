@@ -169,108 +169,115 @@ object ChargeLimit {
     // ------------------------------------------------------------------ Ausführen
 
     /**
-     * Nach jedem Statusabruf aufrufen (Hintergrund-Job, App). Führt die Entscheidung aus und meldet
-     * Ergebnisse als Benachrichtigung. Fehler werden geloggt, nie geworfen.
+     * Nach jedem Statusabruf eines Fahrzeugs aufrufen (Hintergrund-Job, App). Führt die Entscheidung aus und
+     * meldet Ergebnisse als Benachrichtigung. Einstellungen und Zustand gelten je Fahrzeug. Fehler werden
+     * geloggt, nie geworfen.
      */
-    suspend fun check(ctx: Context, status: VehicleStatus) = mutex.withLock {
+    suspend fun check(ctx: Context, vehicleId: String, status: VehicleStatus) = mutex.withLock {
         try {
-            val settings = AppSettings(ctx)
+            val settings = VehicleSettings(ctx, vehicleId)
             val prefs = settings.prefs
             // Neuer Ladevorgang → wieder pausieren dürfen
             if (status.charging?.isCharging != true) prefs.edit().putBoolean(K_SENT, false).commit()
-            if (!VehicleProfile.load(ctx).powertrain.hasBattery) return@withLock
+            if (!VehicleProfile.load(ctx, vehicleId).powertrain.hasBattery) return@withLock
 
             val now = Instant.now()
+            val v = Car(vehicleId, prefs)
             when (val d = decide(settings.chargeLimit, status, loadState(prefs), now)) {
                 Decision.None -> {}
-                is Decision.CheckIn -> scheduleCheck(ctx, d.delay)
+                is Decision.CheckIn -> scheduleCheck(ctx, vehicleId, d.delay)
                 Decision.Stop -> {
                     prefs.edit().putBoolean(K_SENT, true).commit()
-                    stop(ctx, prefs, status, settings.chargeLimit.percent)
+                    stop(ctx, v, status, settings.chargeLimit.percent)
                 }
-                Decision.WakeUp -> wakeUp(ctx, prefs, now)
-                is Decision.Postpone -> postpone(ctx, prefs, status, settings.chargeLimit.percent, d, now)
-                is Decision.Restore -> restore(ctx, prefs, d, now)
+                Decision.WakeUp -> wakeUp(ctx, v, now)
+                is Decision.Postpone -> postpone(ctx, v, status, settings.chargeLimit.percent, d, now)
+                is Decision.Restore -> restore(ctx, v, d, now)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Ladelimit-Prüfung fehlgeschlagen", e)
         }
     }
 
-    private suspend fun stop(ctx: Context, prefs: SharedPreferences, status: VehicleStatus, percent: Int) {
+    /** Fahrzeug, um das es gerade geht, mit seinen Einstellungen. */
+    private class Car(val id: String, val prefs: SharedPreferences)
+
+    private fun notify(ctx: Context, v: Car, title: String, text: String) = Notifier.chargeLimit(ctx, v.id, title, text)
+
+    private suspend fun stop(ctx: Context, v: Car, status: VehicleStatus, percent: Int) {
         val soc = status.batteryPercent.fmtPct()
         val title = "Ladelimit $percent % erreicht"
-        val result = send(ctx, title, "Akku bei $soc – ", RemoteCommand.charging(false, status.charging?.nextDelayedTime))
+        val result = send(ctx, v, title, "Akku bei $soc – ", RemoteCommand.charging(false, status.charging?.nextDelayedTime))
         val resume = RemoteControl.ptTime(status.charging?.nextDelayedTime) ?: (22 to 0)
         when {
-            result == null -> prefs.edit().putBoolean(K_SENT, false).commit() // nicht gesendet → später erneut
-            result.success -> Notifier.chargeLimit(
-                ctx, title,
+            result == null -> v.prefs.edit().putBoolean(K_SENT, false).commit() // nicht gesendet → später erneut
+            result.success -> notify(
+                ctx, v, title,
                 "Laden bei $soc pausiert. Vor dem nächsten Ladestart um ${hm(resume)} Uhr verlegt die App die Startzeit, " +
                     "damit das Auto nicht weiterlädt.",
             )
             result.final -> {
-                prefs.edit().putBoolean(K_SENT, false).commit()
-                Notifier.chargeLimit(ctx, title, "Akku bei $soc – Pausieren fehlgeschlagen: ${result.label}")
+                v.prefs.edit().putBoolean(K_SENT, false).commit()
+                notify(ctx, v, title, "Akku bei $soc – Pausieren fehlgeschlagen: ${result.label}")
             }
-            else -> Notifier.chargeLimit(ctx, title, "Akku bei $soc – Pausieren gesendet, aber keine Rückmeldung vom Auto.")
+            else -> notify(ctx, v, title, "Akku bei $soc – Pausieren gesendet, aber keine Rückmeldung vom Auto.")
         }
     }
 
-    private suspend fun wakeUp(ctx: Context, prefs: SharedPreferences, now: Instant) {
+    private suspend fun wakeUp(ctx: Context, v: Car, now: Instant) {
         // Vor dem Senden merken, damit auch ein Fehlschlag das Kontingent schont
-        val recent = loadState(prefs).wakeups.filter { Duration.between(it, now) < Duration.ofHours(24) } + now
-        prefs.edit().putString(K_WAKEUPS, recent.joinToString(",") { it.toEpochMilli().toString() }).commit()
-        send(ctx, null, "", RemoteCommand.wakeUp(), waitFor = Duration.ofSeconds(60))
+        val recent = loadState(v.prefs).wakeups.filter { Duration.between(it, now) < Duration.ofHours(24) } + now
+        v.prefs.edit().putString(K_WAKEUPS, recent.joinToString(",") { it.toEpochMilli().toString() }).commit()
+        send(ctx, v, null, "", RemoteCommand.wakeUp(), waitFor = Duration.ofSeconds(60))
         // Das Auto braucht einen Moment, bis der neue Stand bei Opel liegt
-        scheduleCheck(ctx, Duration.ofMinutes(3))
+        scheduleCheck(ctx, v.id, Duration.ofMinutes(3))
     }
 
     private suspend fun postpone(
-        ctx: Context, prefs: SharedPreferences, status: VehicleStatus, percent: Int, d: Decision.Postpone, now: Instant,
+        ctx: Context, v: Car, status: VehicleStatus, percent: Int, d: Decision.Postpone, now: Instant,
     ) {
-        val original = loadState(prefs).originalStart ?: RemoteControl.ptTime(status.charging?.nextDelayedTime)
+        val original = loadState(v.prefs).originalStart ?: RemoteControl.ptTime(status.charging?.nextDelayedTime)
         val title = "Ladestart verlegt"
-        val result = send(ctx, "Ladestart verlegen fehlgeschlagen", "", RemoteCommand.delayedChargeAt(d.hour, d.minute))
+        val result = send(ctx, v, "Ladestart verlegen fehlgeschlagen", "", RemoteCommand.delayedChargeAt(d.hour, d.minute))
         if (result?.success != true) return // beim nächsten Abruf im Zeitfenster erneut
-        prefs.edit()
+        v.prefs.edit()
             .putString(K_ORIG, original?.let { hm(it) })
             .putLong(K_POSTPONED, now.toEpochMilli())
             .commit()
-        Notifier.chargeLimit(
-            ctx, title,
+        notify(
+            ctx, v, title,
             "Akku bei ${status.batteryPercent.fmtPct()} (Limit $percent %) – damit das Auto nicht weiterlädt, " +
                 "startet das Laden jetzt erst um ${hm(d.hour to d.minute)} Uhr. " +
                 (original?.let { "Die ursprüngliche Zeit ${hm(it)} Uhr stellt die App wieder her, sobald der Akku unter dem Limit ist." } ?: ""),
         )
     }
 
-    private suspend fun restore(ctx: Context, prefs: SharedPreferences, d: Decision.Restore, now: Instant) {
-        prefs.edit().putLong(K_RESTORE_TRY, now.toEpochMilli()).commit()
-        val result = send(ctx, null, "", RemoteCommand.delayedChargeAt(d.hour, d.minute))
+    private suspend fun restore(ctx: Context, v: Car, d: Decision.Restore, now: Instant) {
+        v.prefs.edit().putLong(K_RESTORE_TRY, now.toEpochMilli()).commit()
+        val result = send(ctx, v, null, "", RemoteCommand.delayedChargeAt(d.hour, d.minute))
         if (result?.success == true) {
-            prefs.edit().remove(K_ORIG).remove(K_POSTPONED).commit()
-            Notifier.chargeLimit(ctx, "Ladestart wiederhergestellt", "Das Auto lädt wieder ab ${hm(d.hour to d.minute)} Uhr.")
+            v.prefs.edit().remove(K_ORIG).remove(K_POSTPONED).commit()
+            notify(ctx, v, "Ladestart wiederhergestellt", "Das Auto lädt wieder ab ${hm(d.hour to d.minute)} Uhr.")
         }
     }
 
     /**
-     * Sendet einen Fernbefehl und wartet auf die Rückmeldung. null = nicht gesendet (dann mit [failTitle]
-     * gemeldet, falls angegeben). Ohne finale Rückmeldung in [waitFor] kommt ein nicht-finales Update zurück.
+     * Sendet einen Fernbefehl an das Fahrzeug und wartet auf die Rückmeldung. null = nicht gesendet (dann mit
+     * [failTitle] gemeldet, falls angegeben). Ohne finale Rückmeldung in [waitFor] kommt ein nicht-finales Update zurück.
      */
     private suspend fun send(
-        ctx: Context, failTitle: String?, failPrefix: String, cmd: RemoteCommand, waitFor: Duration = Duration.ofSeconds(120),
+        ctx: Context, v: Car, failTitle: String?, failPrefix: String, cmd: RemoteCommand, waitFor: Duration = Duration.ofSeconds(120),
     ): CommandUpdate? {
         val store = SecureStore(ctx)
         val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).build()
         val remote = RemoteControl(store, AuthRepository(store, http), http)
         try {
             if (!remote.isActivated) {
-                failTitle?.let { Notifier.chargeLimit(ctx, it, "${failPrefix}Fernsteuerung ist nicht eingerichtet.") }
+                failTitle?.let { notify(ctx, v, it, "${failPrefix}Fernsteuerung ist nicht eingerichtet.") }
                 return null
             }
-            val vin = vin(ctx) ?: run {
-                failTitle?.let { Notifier.chargeLimit(ctx, it, "${failPrefix}kein Fahrzeug bekannt, bitte die App öffnen.") }
+            val vin = Garage.vehicle(ctx, v.id)?.vin?.ifBlank { null } ?: run {
+                failTitle?.let { notify(ctx, v, it, "${failPrefix}kein Fahrzeug bekannt, bitte die App öffnen.") }
                 return null
             }
             val id = remote.send(vin, cmd.service, cmd.params)
@@ -280,7 +287,7 @@ object ChargeLimit {
             Notifier.loginExpired(ctx)
             return null
         } catch (e: Exception) {
-            failTitle?.let { Notifier.chargeLimit(ctx, it, "${failPrefix}Senden fehlgeschlagen: ${e.message ?: e}") }
+            failTitle?.let { notify(ctx, v, it, "${failPrefix}Senden fehlgeschlagen: ${e.message ?: e}") }
             Log.w(TAG, "Befehl ${cmd.service} fehlgeschlagen", e)
             return null
         } finally {
@@ -288,24 +295,15 @@ object ChargeLimit {
         }
     }
 
-    /** Zusätzlicher Statusabruf (der Hintergrund-Job prüft dabei das Limit). */
-    private fun scheduleCheck(ctx: Context, delay: Duration) {
+    /** Zusätzlicher Statusabruf (der Hintergrund-Job prüft dabei das Limit). Je Fahrzeug ein eigener Termin. */
+    private fun scheduleCheck(ctx: Context, vehicleId: String, delay: Duration) {
         WorkManager.getInstance(ctx).enqueueUniqueWork(
-            CHECK_WORK, ExistingWorkPolicy.REPLACE,
+            "${CHECK_WORK}_${Garage.safe(vehicleId)}", ExistingWorkPolicy.REPLACE,
             OneTimeWorkRequestBuilder<SnapshotWorker>()
                 .setInitialDelay(delay.seconds.coerceAtLeast(30), TimeUnit.SECONDS)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build(),
         )
-    }
-
-    private fun vin(ctx: Context): String? {
-        val prefs = AppSettings(ctx).prefs
-        val id = prefs.getString("vehicle_id", null)
-        val list = prefs.getString("cache_vehicles", null)
-            ?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
-            .obj("_embedded").arr("vehicles").objects()
-        return (list.firstOrNull { it.optString("id") == id } ?: list.firstOrNull())?.optString("vin")?.ifBlank { null }
     }
 
     fun hm(t: Pair<Int, Int>) = "%02d:%02d".format(Locale.GERMANY, t.first, t.second)

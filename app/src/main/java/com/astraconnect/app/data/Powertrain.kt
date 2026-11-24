@@ -1,7 +1,6 @@
 package com.astraconnect.app.data
 
 import android.content.Context
-import org.json.JSONObject
 import kotlin.math.roundToInt
 
 /** Antriebsart – bestimmt, welche Bereiche (Laden, Tanken, Klima …) die App zeigt. */
@@ -165,21 +164,14 @@ data class VehicleProfile(
             )
         }
 
-        /** Für Widgets und Hintergrund-Job: aus Einstellungen und zuletzt abgerufenen Daten. */
-        fun load(ctx: Context): VehicleProfile {
-            val settings = AppSettings(ctx)
-            val prefs = settings.prefs
-            val status = prefs.getString("cache_status", null)
-                ?.let { runCatching { VehicleStatus.parse(JSONObject(it)) }.getOrNull() }
-            return resolve(settings.powertrainManual, settings.capacityKwhManual, settings.tankLitersManual, cachedVin(prefs), status)
-        }
-
-        private fun cachedVin(prefs: android.content.SharedPreferences): String? {
-            val id = prefs.getString("vehicle_id", null)
-            val list = prefs.getString("cache_vehicles", null)
-                ?.let { runCatching { JSONObject(it) }.getOrNull() }
-                .obj("_embedded").arr("vehicles").objects()
-            return (list.firstOrNull { it.optString("id") == id } ?: list.firstOrNull())?.optString("vin")
+        /** Für Widgets, Hintergrund-Job und App: aus den Einstellungen und zuletzt abgerufenen Daten des Fahrzeugs. */
+        fun load(ctx: Context, vehicleId: String): VehicleProfile {
+            val settings = VehicleSettings(ctx, vehicleId)
+            val status = settings.cachedStatus?.let { runCatching { VehicleStatus.parse(it) }.getOrNull() }
+            return resolve(
+                settings.powertrainManual, settings.capacityKwhManual, settings.tankLitersManual,
+                Garage.vehicle(ctx, vehicleId)?.vin, status,
+            )
         }
     }
 }

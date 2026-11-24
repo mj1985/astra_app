@@ -1,6 +1,5 @@
 package com.astraconnect.app.data
 
-import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -152,8 +151,6 @@ class CostModel(
 
 /** Speichert Tankpreise und Ladekosten (Datei `kosten.json`). */
 class CostBook(private val file: File) {
-
-    constructor(context: Context) : this(File(context.filesDir, "kosten.json"))
 
     @Synchronized
     private fun read(): JSONObject =

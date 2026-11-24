@@ -82,7 +82,8 @@ fun VehicleSettings(vm: AppViewModel) {
     var tank by remember(profile.tankLiters) { mutableStateOf(String.format(Locale.GERMANY, "%.0f", profile.tankLiters)) }
     val sizeSource = if (auto.model?.powertrain == pt) "laut Modellliste" else "Standardwert"
 
-    SectionCard("Fahrzeug", Icons.Filled.DirectionsCar) {
+    // Bei mehreren Fahrzeugen klarstellen, für welches die Angaben gelten
+    SectionCard(if (ui.vehicles.size > 1) "Fahrzeug · ${ui.vehicleName}" else "Fahrzeug", Icons.Filled.DirectionsCar) {
         InfoRow("Modell (laut VIN)", profile.model?.let { "Opel ${it.name}" } ?: "nicht in der Liste")
         InfoRow("Antrieb", pt.label)
         InfoRow("Quelle", profile.source.label)
@@ -269,8 +270,9 @@ fun BackupSettings(vm: AppViewModel) {
 fun WidgetSettings() {
     SectionCard("Widgets", Icons.Filled.Widgets) {
         Text(
-            "Vier Widgets auf dem Startbildschirm: Laden, Steuerung (mit Fahrzeugbild), Reichweite und Letzte Fahrt. " +
-                "Die Steuer-Tasten brauchen die eingerichtete Fernsteuerung.",
+            "Fünf Widgets auf dem Startbildschirm: Fahrzeug, Laden, Steuerung, Reichweite und Letzte Fahrt. " +
+                "Die Steuer-Tasten brauchen die eingerichtete Fernsteuerung. Bei mehreren Fahrzeugen im Konto wählst du " +
+                "beim Platzieren, welches Fahrzeug ein Widget zeigt – ab Android 12 lässt sich das über „Widget bearbeiten“ ändern.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

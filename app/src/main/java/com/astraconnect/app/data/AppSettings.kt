@@ -25,21 +25,12 @@ data class NotifyPrefs(
     val battery12VThreshold: Double = 50.0,
 )
 
-/** Einstellungen (SharedPreferences „app“) – gemeinsam für App, Hintergrund-Job und Widget. */
-class AppSettings(context: Context) {
-    val prefs: SharedPreferences = context.getSharedPreferences("app", Context.MODE_PRIVATE)
-
-    var prices: Prices
-        get() = Prices(
-            // Ohne eigenen Eintrag: Standardpreis grob in die Währung des gewählten Markts übertragen
-            if (prefs.contains("price_fuel")) prefs.getFloat("price_fuel", 0f).toDouble() else Currency.current.fromEuro(1.75),
-            if (prefs.contains("price_power")) prefs.getFloat("price_power", 0f).toDouble() else Currency.current.fromEuro(0.35),
-            prefs.getFloat("charge_loss", 10f).toDouble(),
-        )
-        set(v) {
-            prefs.edit().putFloat("price_fuel", v.fuelPerLiter.toFloat()).putFloat("price_power", v.powerPerKwh.toFloat())
-                .putFloat("charge_loss", v.chargeLossPct.toFloat()).apply()
-        }
+/**
+ * Einstellungen eines Fahrzeugs (SharedPreferences `fahrzeug_<id>`, siehe [Garage]): Antrieb, Akku- und
+ * Tankgröße, Ladelimit und der zuletzt abgerufene Status.
+ */
+class VehicleSettings(context: Context, val vehicleId: String) {
+    val prefs: SharedPreferences = Garage.prefs(context, vehicleId)
 
     /** Selbst eingetragener Tankinhalt; null = aus Modellliste bzw. Standard (siehe [VehicleProfile]). */
     var tankLitersManual: Double?
@@ -65,6 +56,57 @@ class AppSettings(context: Context) {
     var powertrainManual: Powertrain?
         get() = Powertrain.of(prefs.getString("powertrain", null))
         set(v) = prefs.edit().putString("powertrain", v?.name).apply()
+
+    /** Zuletzt abgerufener Status (Rohdaten der API). */
+    val cachedStatus: JSONObject? get() = prefs.getString("cache_status", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+    val cachedMaintenance: JSONObject? get() = prefs.getString("cache_maint", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+
+    fun cacheStatus(status: JSONObject, maintenance: JSONObject? = cachedMaintenance) {
+        prefs.edit().putString("cache_status", status.toString()).putString("cache_maint", maintenance?.toString()).apply()
+    }
+
+    fun clearCache() {
+        prefs.edit().remove("cache_status").remove("cache_maint").apply()
+    }
+
+    /** Fahrzeug-Einstellungen für die Datensicherung. */
+    fun toJson(): JSONObject = JSONObject()
+        .put("tank_l", tankLitersManual ?: JSONObject.NULL)
+        .put("capacity_kwh", capacityKwhManual ?: JSONObject.NULL)
+        .put("powertrain", powertrainManual?.name ?: JSONObject.NULL)
+        .put("charge_limit_on", chargeLimit.enabled).put("charge_limit_pct", chargeLimit.percent)
+        .put("auto_wakeup", chargeLimit.wakeUp)
+
+    /** Liest die Fahrzeug-Felder – auch aus dem gemeinsamen Einstellungsblock älterer Sicherungen. */
+    fun restore(o: JSONObject) {
+        o.num("tank_l")?.let { tankLitersManual = it }
+        o.num("capacity_kwh")?.let { capacityKwhManual = it }
+        Powertrain.of(o.str("powertrain"))?.let { powertrainManual = it }
+        if (o.has("charge_limit_pct")) {
+            chargeLimit = ChargeLimitPrefs(
+                o.optBoolean("charge_limit_on", false),
+                o.optInt("charge_limit_pct", ChargeLimitPrefs.DEFAULT_PCT),
+                o.optBoolean("auto_wakeup", true),
+            )
+        }
+    }
+}
+
+/** Gemeinsame Einstellungen (SharedPreferences „app“) – für App, Hintergrund-Job und Widget, alle Fahrzeuge. */
+class AppSettings(context: Context) {
+    val prefs: SharedPreferences = Garage.appPrefs(context)
+
+    var prices: Prices
+        get() = Prices(
+            // Ohne eigenen Eintrag: Standardpreis grob in die Währung des gewählten Markts übertragen
+            if (prefs.contains("price_fuel")) prefs.getFloat("price_fuel", 0f).toDouble() else Currency.current.fromEuro(1.75),
+            if (prefs.contains("price_power")) prefs.getFloat("price_power", 0f).toDouble() else Currency.current.fromEuro(0.35),
+            prefs.getFloat("charge_loss", 10f).toDouble(),
+        )
+        set(v) {
+            prefs.edit().putFloat("price_fuel", v.fuelPerLiter.toFloat()).putFloat("price_power", v.powerPerKwh.toFloat())
+                .putFloat("charge_loss", v.chargeLossPct.toFloat()).apply()
+        }
 
     var notify: NotifyPrefs
         get() = NotifyPrefs(
@@ -99,14 +141,9 @@ class AppSettings(context: Context) {
         get() = prefs.getLong("backup_last", 0L)
         set(v) = prefs.edit().putLong("backup_last", v).apply()
 
-    /** Einstellungen, die in die Datensicherung gehören. */
+    /** Gemeinsame Einstellungen, die in die Datensicherung gehören (Fahrzeug-Einstellungen: [VehicleSettings.toJson]). */
     fun toJson(): JSONObject = JSONObject()
         .put("price_fuel", prices.fuelPerLiter).put("price_power", prices.powerPerKwh).put("charge_loss", prices.chargeLossPct)
-        .put("tank_l", tankLitersManual ?: JSONObject.NULL)
-        .put("capacity_kwh", capacityKwhManual ?: JSONObject.NULL)
-        .put("powertrain", powertrainManual?.name ?: JSONObject.NULL)
-        .put("charge_limit_on", chargeLimit.enabled).put("charge_limit_pct", chargeLimit.percent)
-        .put("auto_wakeup", chargeLimit.wakeUp)
         .put("bottom_bar", bottomBar?.joinToString(",") ?: JSONObject.NULL)
 
     fun restore(o: JSONObject) {
@@ -116,15 +153,5 @@ class AppSettings(context: Context) {
             o.num("price_power") ?: prices.powerPerKwh,
             o.num("charge_loss") ?: prices.chargeLossPct,
         )
-        o.num("tank_l")?.let { tankLitersManual = it }
-        o.num("capacity_kwh")?.let { capacityKwhManual = it }
-        Powertrain.of(o.str("powertrain"))?.let { powertrainManual = it }
-        if (o.has("charge_limit_pct")) {
-            chargeLimit = ChargeLimitPrefs(
-                o.optBoolean("charge_limit_on", false),
-                o.optInt("charge_limit_pct", ChargeLimitPrefs.DEFAULT_PCT),
-                o.optBoolean("auto_wakeup", true),
-            )
-        }
     }
 }

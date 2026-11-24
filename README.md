@@ -6,6 +6,10 @@ nutzbar auch für Elektroautos und Verbrenner/Mild-Hybride.
 
 ## Funktionen
 
+- **Mehrere Fahrzeuge:** Alle Autos im selben MyOpel-Konto; umschalten per Tipp auf den Namen auf der Startseite.
+  Fahrtenbuch, Messpunkte, Strecken, Tank-/Ladekosten, Antrieb/Akku/Tank und Ladelimit gelten je Fahrzeug;
+  Orte & Regeln, Preise und Benachrichtigungs-Einstellungen sind gemeinsam. Der Hintergrund-Abruf fragt alle
+  Fahrzeuge ab, Benachrichtigungen nennen das Fahrzeug
 - **Übersicht:** Verriegelung, Türen/Fenster auf einen Blick, Akku- und Tankstand, Reichweiten,
   Kilometerstand, Ladestatus, Zündung, Außentemperatur, Vorklimatisierung, Warnungen, letzter Standort
 - **Fahrtenbuch:** Fahrten aus „My Trip Report“ abrufen und lokal speichern, Kategorie
@@ -42,14 +46,17 @@ nutzbar auch für Elektroautos und Verbrenner/Mild-Hybride.
   ohne aufgezeichnete Punkte bleibt es bei der Linie Start → Ziel
 - **Benachrichtigungen:** Laden fertig/abgebrochen, Auto nachts offen, 12-V-Batterie schwach, Wartung fällig,
   Anmeldung abgelaufen
-- **Homescreen-Widgets:**
+- **Homescreen-Widgets:** bei mehreren Fahrzeugen wird beim Platzieren gewählt, welches ein Widget zeigt
+  (oder es folgt dem in der App gewählten); ab Android 12 über „Widget bearbeiten“ änderbar
+  - *Fahrzeug (4×2):* Name, Akku-/Tanksymbol mit Reichweite, Ladestatus, Fahrzeugbild (Schrägansicht) und Tastenleiste
+    für Verriegeln, Klima, Laden starten/pausieren und Licht
   - *Laden:* Akkustand mit Balken, Ladestatus mit Restladezeit und Fertig-Uhrzeit, Reichweite elektrisch und gesamt (inkl. Benzin)
   - *Steuerung (5×2):* links das Fahrzeugbild (am Heck angeschnitten) mit Akku- und Tankstand, rechts Klimatisierung an/aus, Hupe, Lichtsignal, Verriegeln
     (Tasten brauchen die eingerichtete Fernsteuerung; Bild spiegeln unter Einstellungen → Widgets)
   - *Reichweite (2×1):* Akku- und Tankstand mit Reichweite; ab 2 Zeilen Höhe zusätzlich die Gesamtreichweite
   - *Letzte Fahrt (4×1):* Strecke, Dauer, Benzin- und Stromverbrauch (gesamt und pro 100 km); ab 2 Zeilen ausführlicher
 - **Datensicherung:** Export/Import als JSON und automatische tägliche Sicherung in einen wählbaren Ordner
-  (z. B. Google Drive) – ohne Zugangsdaten
+  (z. B. Google Drive) – alle Fahrzeuge, ohne Zugangsdaten; ältere Sicherungen gehen an das gewählte Fahrzeug
 - **API-Rohdaten:** die unveränderten JSON-Antworten zum Nachsehen/Kopieren
 
 ## Login
