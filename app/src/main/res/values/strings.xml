@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">Astra Connect</string>
     <string name="widget_charge_description">Laden: Akkustand, Restladezeit und Reichweite (elektrisch und gesamt)</string>
+    <string name="widget_car_description">Fahrzeug: Bild, Reichweite und Ladestatus – mit Tasten für Verriegeln, Klima, Laden und Licht</string>
     <string name="widget_control_description">Steuerung: Klimatisierung, Hupe, Licht und Verriegeln – mit Fahrzeugbild</string>
     <string name="widget_range_description">Reichweite: Akku- und Tankstand mit Reichweite</string>
     <string name="widget_trip_description">Letzte Fahrt: Strecke, Benzin- und Stromverbrauch</string>

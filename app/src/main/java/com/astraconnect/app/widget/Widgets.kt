@@ -34,6 +34,7 @@ object Widgets {
     private val renderers: List<Pair<Class<out AppWidgetProvider>, (WidgetSource) -> List<Variant>>> = listOf(
         StatusWidget::class.java to { src -> listOf(Variant(0f, StatusWidget.render(src))) },
         ControlWidget::class.java to { src -> listOf(Variant(0f, ControlWidget.render(src))) },
+        CarWidget::class.java to { src -> listOf(Variant(0f, CarWidget.render(src))) },
         RangeWidget::class.java to RangeWidget::render,
         TripWidget::class.java to TripWidget::render,
     )

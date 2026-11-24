@@ -29,6 +29,7 @@ import com.astraconnect.app.data.RemoteControl
 import com.astraconnect.app.data.SecureStore
 import com.astraconnect.app.data.StellantisApi
 import com.astraconnect.app.data.Vehicle
+import com.astraconnect.app.data.VehicleStatus
 import com.astraconnect.app.data.arr
 import com.astraconnect.app.data.obj
 import com.astraconnect.app.data.objects
@@ -57,7 +58,10 @@ enum class WidgetCommand(
     CLIMATE_OFF("climate", "Klimatisierung stoppen", "Klimatisierung gestoppt"),
     HORN("horn", "Hupe", null),
     LIGHTS("light", "Lichtsignal", null),
-    LOCK("lock", "Verriegeln", "Auto verriegelt");
+    LOCK("lock", "Verriegeln", "Auto verriegelt"),
+    CHARGE_START("charge", "Laden starten", "Laden gestartet"),
+    /** Pausieren = verzögertes Laden ab der im Auto programmierten Startzeit. */
+    CHARGE_STOP("charge", "Laden pausieren", "Laden pausiert");
 
     fun command(status: JSONObject?): RemoteCommand = when (this) {
         CLIMATE_ON -> RemoteCommand.preconditioning(true, status)
@@ -65,6 +69,16 @@ enum class WidgetCommand(
         HORN -> RemoteCommand.horn()
         LIGHTS -> RemoteCommand.lights()
         LOCK -> RemoteCommand.lock()
+        CHARGE_START, CHARGE_STOP -> RemoteCommand.charging(
+            this == CHARGE_START,
+            status?.let { runCatching { VehicleStatus.parse(it) }.getOrNull() }?.charging?.nextDelayedTime,
+        )
+    }
+
+    /** Taste, die diesen Befehl sendet (Broadcast an das Widget [widget]). */
+    fun pendingIntent(ctx: Context, widget: Class<out BaseWidget>, requestBase: Int): PendingIntent {
+        val intent = Intent(ctx, widget).setAction(ControlWidget.ACTION_COMMAND).putExtra(ControlWidget.EXTRA_CMD, name)
+        return PendingIntent.getBroadcast(ctx, requestBase + ordinal, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 }
 
@@ -76,22 +90,27 @@ class ControlWidget : BaseWidget() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action != ACTION_COMMAND) return
-        val cmd = intent.getStringExtra(EXTRA_CMD)?.let { runCatching { WidgetCommand.valueOf(it) }.getOrNull() } ?: return
-        if (!PendingCommands.add(context, cmd.key)) return // läuft schon
-        Widgets.updateAll(context)
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            "widget_command", ExistingWorkPolicy.APPEND_OR_REPLACE,
-            OneTimeWorkRequestBuilder<WidgetCommandWorker>()
-                .setInputData(workDataOf(EXTRA_CMD to cmd.name))
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .build(),
-        )
+        handleCommand(context, intent)
     }
 
     companion object {
         const val ACTION_COMMAND = "com.astraconnect.app.WIDGET_COMMAND"
         const val EXTRA_CMD = "cmd"
+
+        /** Tastendruck aus einem Widget: Befehl vormerken (Taste zeigt „Sende …“) und im Hintergrund senden. */
+        internal fun handleCommand(context: Context, intent: Intent) {
+            if (intent.action != ACTION_COMMAND) return
+            val cmd = intent.getStringExtra(EXTRA_CMD)?.let { runCatching { WidgetCommand.valueOf(it) }.getOrNull() } ?: return
+            if (!PendingCommands.add(context, cmd.key)) return // läuft schon
+            Widgets.updateAll(context)
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "widget_command", ExistingWorkPolicy.APPEND_OR_REPLACE,
+                OneTimeWorkRequestBuilder<WidgetCommandWorker>()
+                    .setInputData(workDataOf(EXTRA_CMD to cmd.name))
+                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .build(),
+            )
+        }
 
         /** Anteil der Breite für das Bild – muss zu den layout_weight-Werten in widget_control.xml passen. */
         private const val CAR_SHARE = 1.25 / (1.25 + 1.0)
@@ -123,11 +142,7 @@ class ControlWidget : BaseWidget() {
                 v.setInt(icon, "setBackgroundResource", if (active) R.drawable.widget_round_bg_active else R.drawable.widget_round_bg)
                 v.setInt(icon, "setColorFilter", if (active) COLOR_DARK else tint ?: Color.WHITE)
                 v.setInt(icon, "setImageAlpha", if (busy) 110 else 255)
-                val intent = Intent(ctx, ControlWidget::class.java).setAction(ACTION_COMMAND).putExtra(EXTRA_CMD, cmd.name)
-                v.setOnClickPendingIntent(
-                    btn,
-                    PendingIntent.getBroadcast(ctx, 100 + cmd.ordinal, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),
-                )
+                v.setOnClickPendingIntent(btn, cmd.pendingIntent(ctx, ControlWidget::class.java, 100))
             }
 
             val climateOn = s?.preconditioning.equals("Enabled", true)
@@ -263,42 +278,72 @@ internal fun selectedVehicle(prefs: SharedPreferences): Vehicle? {
 }
 
 /**
- * Fahrzeugbild fürs Steuer-Widget: einmal von Opel laden, Hintergrund freistellen, Ränder abschneiden
- * und als PNG ablegen. Die Opel-Bilder zeigen die Front nach rechts – beim Rendern wird links das Heck
- * so weit abgeschnitten, dass das Bild die linke Widget-Hälfte möglichst ausfüllt.
+ * Ansicht des Fahrzeugbilds. Opel liefert die Ansicht über den Parameter `view` der Bild-URL:
+ * 001 = Seitenansicht (so kommt die URL aus der API), 002 = Schrägansicht von vorn.
+ */
+internal enum class CarView(val view: String?, private val prefix: String) {
+    SIDE(null, "widget_car"),
+    FRONT("002", "widget_car_002");
+
+    val fileName get() = "$prefix.png"
+    val keyUrl get() = "${prefix}_url"
+    val keyTried get() = "${prefix}_tried"
+    val workName get() = "${prefix}_image"
+
+    /** Bild-URL dieser Ansicht aus der URL der API. */
+    fun url(base: String): String = when {
+        view == null -> base
+        VIEW_PARAM.containsMatchIn(base) -> VIEW_PARAM.replace(base) { "${it.groupValues[1]}$view" }
+        else -> base + (if ('?' in base) "&" else "?") + "view=$view"
+    }
+
+    private companion object {
+        val VIEW_PARAM = Regex("([?&]view=)[^&]*")
+    }
+}
+
+/**
+ * Fahrzeugbilder für die Widgets: einmal von Opel laden, Hintergrund freistellen, Ränder abschneiden
+ * und als PNG ablegen. Die Seitenansicht zeigt die Front nach rechts – fürs Steuer-Widget wird links
+ * das Heck so weit abgeschnitten, dass das Bild die linke Widget-Hälfte möglichst ausfüllt.
  */
 internal object CarImage {
-    private const val FILE = "widget_car.png"
-    private const val K_URL = "widget_car_url"
-    private const val K_TRIED = "widget_car_tried"
-
     /** Vom Auto bleibt mindestens bzw. höchstens dieser Anteil sichtbar (Front immer ganz). */
     private const val MIN_KEEP = 0.55
     private const val MAX_KEEP = 0.88
     private const val MAX_HEIGHT = 480
 
-    private fun file(ctx: Context) = File(ctx.filesDir, FILE)
+    private fun file(ctx: Context, cv: CarView) = File(ctx.filesDir, cv.fileName)
 
     /** Lädt das Bild im Hintergrund nach, wenn es fehlt oder sich die URL geändert hat. */
-    fun ensure(ctx: Context, prefs: SharedPreferences) {
-        val url = selectedVehicle(prefs)?.pictureUrl ?: return
-        if (prefs.getString(K_URL, null) == url && file(ctx).exists()) return
+    fun ensure(ctx: Context, prefs: SharedPreferences, cv: CarView = CarView.SIDE) {
+        val url = selectedVehicle(prefs)?.pictureUrl?.let(cv::url) ?: return
+        if (prefs.getString(cv.keyUrl, null) == url && file(ctx, cv).exists()) return
         // Fehlversuche höchstens alle 6 Stunden wiederholen
-        val tried = prefs.getString(K_TRIED, null)
+        val tried = prefs.getString(cv.keyTried, null)
         if (tried != null && tried.substringBefore('|') == url &&
             System.currentTimeMillis() - (tried.substringAfter('|').toLongOrNull() ?: 0) < 6 * 3600_000L
         ) return
         WorkManager.getInstance(ctx).enqueueUniqueWork(
-            "widget_car_image", ExistingWorkPolicy.KEEP,
+            cv.workName, ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<CarImageWorker>()
+                .setInputData(workDataOf(CarImageWorker.KEY_VIEW to cv.name))
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build(),
         )
     }
 
-    /** Bild passend zum Seitenverhältnis [boxAspect] (Breite/Höhe) der Bildfläche im Widget. */
+    /** Ganzes Bild der Ansicht [cv], verkleinert auf höchstens [maxHeight] Pixel Höhe. */
+    fun loadWhole(ctx: Context, cv: CarView, maxHeight: Int = 360): Bitmap? = runCatching {
+        val src = BitmapFactory.decodeFile(file(ctx, cv).path) ?: return null
+        if (src.height <= maxHeight) return src
+        val scale = maxHeight.toFloat() / src.height
+        Bitmap.createScaledBitmap(src, (src.width * scale).roundToInt().coerceAtLeast(1), maxHeight, true)
+    }.getOrNull()
+
+    /** Seitenansicht passend zum Seitenverhältnis [boxAspect] (Breite/Höhe) der Bildfläche im Widget. */
     fun load(ctx: Context, boxAspect: Double): Bitmap? = runCatching {
-        val src = BitmapFactory.decodeFile(file(ctx).path) ?: return null
+        val src = BitmapFactory.decodeFile(file(ctx, CarView.SIDE).path) ?: return null
         val keepFrac = keepFraction(src.width, src.height, boxAspect)
         val keep = (src.width * keepFrac).roundToInt().coerceIn(1, src.width)
         val scale = minOf(1f, MAX_HEIGHT.toFloat() / src.height)
@@ -313,10 +358,10 @@ internal object CarImage {
         return (boxAspect * height / width).coerceIn(MIN_KEEP, MAX_KEEP)
     }
 
-    suspend fun download(ctx: Context) = withContext(Dispatchers.IO) {
+    suspend fun download(ctx: Context, cv: CarView) = withContext(Dispatchers.IO) {
         val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
-        val url = selectedVehicle(prefs)?.pictureUrl ?: return@withContext
-        prefs.edit().putString(K_TRIED, "$url|${System.currentTimeMillis()}").apply()
+        val url = selectedVehicle(prefs)?.pictureUrl?.let(cv::url) ?: return@withContext
+        prefs.edit().putString(cv.keyTried, "$url|${System.currentTimeMillis()}").apply()
         val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).build()
         val bytes = http.newCall(Request.Builder().url(url).build()).execute().use { r ->
             if (!r.isSuccessful) error("HTTP ${r.code}")
@@ -329,10 +374,11 @@ internal object CarImage {
         val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
             ?: error("Bild nicht lesbar")
         val clean = cleanup(decoded)
-        val tmp = File(ctx.filesDir, "$FILE.tmp")
+        val target = file(ctx, cv)
+        val tmp = File(ctx.filesDir, "${cv.fileName}.tmp")
         tmp.outputStream().use { clean.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        if (!tmp.renameTo(file(ctx))) { file(ctx).delete(); tmp.renameTo(file(ctx)) }
-        prefs.edit().putString(K_URL, url).apply()
+        if (!tmp.renameTo(target)) { target.delete(); tmp.renameTo(target) }
+        prefs.edit().putString(cv.keyUrl, url).apply()
     }
 
     /** Einfarbigen Hintergrund (vom Rand aus) transparent machen und leere Ränder abschneiden. */
@@ -383,9 +429,14 @@ internal object CarImage {
 
 class CarImageWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
-        runCatching { CarImage.download(applicationContext) }
-            .onFailure { android.util.Log.w("CarImage", "Fahrzeugbild nicht geladen", it) }
+        val cv = inputData.getString(KEY_VIEW)?.let { runCatching { CarView.valueOf(it) }.getOrNull() } ?: CarView.SIDE
+        runCatching { CarImage.download(applicationContext, cv) }
+            .onFailure { android.util.Log.w("CarImage", "Fahrzeugbild ($cv) nicht geladen", it) }
         Widgets.updateAll(applicationContext)
         return Result.success()
+    }
+
+    companion object {
+        const val KEY_VIEW = "view"
     }
 }
