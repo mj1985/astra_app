@@ -109,3 +109,12 @@ Alternativ das Projekt in Android Studio öffnen und auf ▶ drücken.
   wenige neue Sicherheitscodes pro Tag; das Token wird 3 Tage lang automatisch erneuert.
 - Akku-Verbrauch: nur für Fahrten nach Beginn der Aufzeichnung. Liegen mehrere Fahrten zwischen zwei
   Messpunkten, wird nach Strecke aufgeteilt (≈); wurde dazwischen geladen, ist keine Berechnung möglich.
+
+## Lizenz
+
+GPL-3.0 – siehe [LICENSE](LICENSE). Teile sind aus Open-Source-Projekten übernommen bzw. portiert:
+[psa_car_controller](https://github.com/flobz/psa_car_controller) (GPL-3.0; OTP-Erzeugung, Modellliste `car_models.yml`)
+und [homeassistant-stellantis-vehicles](https://github.com/andreadegiovine/homeassistant-stellantis-vehicles)
+(MIT, Copyright (c) 2023 andreadegiovine; Lizenztext dort).
+
+Inoffizielle App – nicht mit Opel oder Stellantis verbunden. „Opel“ und „Astra“ sind Marken ihrer jeweiligen Inhaber.
