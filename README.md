@@ -1,4 +1,4 @@
-# BlitzLink
+# BlitzLink ⚡
 
 Android-App (Kotlin, Jetpack Compose) für Opel-Fahrzeuge über die Stellantis Connected-Car-API v4 –
 dieselbe Schnittstelle, die auch die MyOpel-App nutzt. Entwickelt mit dem Astra Plug-in-Hybrid (2022),
