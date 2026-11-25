@@ -6,58 +6,44 @@ nutzbar auch für Elektroautos und Verbrenner/Mild-Hybride.
 
 ## Funktionen
 
-- **Mehrere Fahrzeuge:** Alle Autos im selben MyOpel-Konto; umschalten per Tipp auf den Namen auf der Startseite.
-  Fahrtenbuch, Messpunkte, Strecken, Tank-/Ladekosten, Antrieb/Akku/Tank und Ladelimit gelten je Fahrzeug;
-  Orte & Regeln, Preise und Benachrichtigungs-Einstellungen sind gemeinsam. Der Hintergrund-Abruf fragt alle
-  Fahrzeuge ab, Benachrichtigungen nennen das Fahrzeug
-- **Übersicht:** Verriegelung, Türen/Fenster auf einen Blick, Akku- und Tankstand, Reichweiten,
-  Kilometerstand, Ladestatus, Zündung, Außentemperatur, Vorklimatisierung, Warnungen, letzter Standort
-- **Fahrtenbuch:** Fahrten aus „My Trip Report“ abrufen und lokal speichern, Kategorie
-  (Privat / Dienstlich / Arbeitsweg) und Zweck/Notiz pro Fahrt, Adressen per Geocoder,
-  Filter nach Jahr/Kategorie, CSV-Export (Excel-kompatibel, Semikolon)
-- **Türen & Fenster:** Status jeder Tür, Kofferraum, Zentralverriegelung, Fenster (sofern geliefert)
-- **Wartung & 12V-Batterie:** Tage/km bis zur Wartung inkl. Fälligkeitsdatum, 12V-Ladezustand mit Bewertung
-- **Fernsteuerung:** Verriegeln/Entriegeln, Vorklimatisierung an/aus, Laden starten/pausieren, Hupe, Lichtsignal,
-  Fahrzeug aufwecken (frischer Status) – mit Rückmeldung vom Auto
-- **Ladelimit (App):** für Autos ohne eigenes Limit – die App pausiert das Laden, sobald der Akku das
-  eingestellte Limit (50–95 %) erreicht; geprüft im Hintergrund, kurz vor dem Limit zusätzlich – bei veralteten
-  Daten mit Wecken des Autos (in den Einstellungen abschaltbar). Damit das Auto zur programmierten Startzeit nicht
-  weiterlädt, verlegt die App diese kurz vorher und stellt sie wieder her, sobald der Akku unter dem Limit ist
-- **Antriebsart:** wird aus den Fahrzeugdaten erkannt (oder in den Einstellungen gewählt) und bestimmt,
-  welche Bereiche erscheinen (Laden/Klima nur mit Antriebsbatterie, Tanken nur mit Tank). Akku- und Tankgröße
-  kommen aus einer Modellliste nach VIN (Quelle: `car_models.yml` von psa_car_controller) und sind änderbar
-- **Akku-Verbrauch pro Fahrt (berechnet):** Ladestand vor/nach der Fahrt × nutzbare Kapazität (einstellbar,
-  Astra Plug-in-Hybrid 10,2 kWh); der Ladestand wird dafür alle 15 Min. im Hintergrund aufgezeichnet
-- **myOpel-Import:** Export der myOpel-App (`.myop` oder ohne Endung) einlesen; Fahrten werden mit dem
-  Fahrtenbuch abgeglichen (Startzeit ± 3 min bzw. gleicher km-Stand) und ergänzt
-- **Fahrten zusammenführen/trennen:** Umparken oder kurze Zwischenstopps an die vorherige Fahrt anhängen
-- **Orte & Regeln:** häufige Orte benennen („Zuhause“, „Arbeit“), Regeln wie „Zuhause ↔ Arbeit = Arbeitsweg“;
-  neue Fahrten werden automatisch zugeordnet (von Hand gesetzte Kategorien bleiben unangetastet)
-- **Leiste unten:** Startseite plus bis zu 4 frei wählbare Bereiche (Einstellungen → Leiste unten)
-- **Tanken:** Tankbuch mit erkannten Tankvorgängen; Literpreis nach dem Tanken eintragen – gilt für alle folgenden Fahrten
-- **Laden:** Ladeübersicht mit Kosten pro Ladevorgang, Monat und Ort; Strompreis pro Ort (z. B. Arbeit = 0 €),
-  Betrag oder €/kWh pro Ladung korrigierbar, Ladungen an öffentlichen Säulen nachtragen
-- **Kosten:** pro Fahrt, Monat und Kategorie – Benzin zum zuletzt getankten Preis, Strom zum Preis der letzten Ladung;
-  ohne Eintrag gelten die Standardpreise (inkl. Ladeverluste)
-- **Statistik:** km pro Monat (rein elektrisch / mit Benzin), Ø Benzinverbrauch, Kosten, Monatstabelle,
-  Datenabgleich API ↔ myOpel (Einheiten-Check)
-- **Karte:** Fahrten und Häufigkeitskarte auf OpenStreetMap; Mini-Karte pro Fahrt. Während der Fahrt fragt die App
-  etwa alle 2 Min. den Standort ab (nur Opel-Server, ohne Wecken) und zeichnet daraus einen groben Streckenverlauf;
-  ohne aufgezeichnete Punkte bleibt es bei der Linie Start → Ziel
-- **Benachrichtigungen:** Laden fertig/abgebrochen, Auto nachts offen, 12-V-Batterie schwach, Wartung fällig,
-  Anmeldung abgelaufen
-- **Homescreen-Widgets:** bei mehreren Fahrzeugen wird beim Platzieren gewählt, welches ein Widget zeigt
-  (oder es folgt dem in der App gewählten); ab Android 12 über „Widget bearbeiten“ änderbar
-  - *Fahrzeug (4×2):* Name, Akku-/Tanksymbol mit Reichweite, Ladestatus, Fahrzeugbild (Schrägansicht) und Tastenleiste
-    für Verriegeln, Klima, Laden starten/pausieren und Licht
-  - *Laden:* Akkustand mit Balken, Ladestatus mit Restladezeit und Fertig-Uhrzeit, Reichweite elektrisch und gesamt (inkl. Benzin)
-  - *Steuerung (5×2):* links das Fahrzeugbild (am Heck angeschnitten) mit Akku- und Tankstand, rechts Klimatisierung an/aus, Hupe, Lichtsignal, Verriegeln
-    (Tasten brauchen die eingerichtete Fernsteuerung; Bild spiegeln unter Einstellungen → Widgets)
-  - *Reichweite (2×1):* Akku- und Tankstand mit Reichweite; ab 2 Zeilen Höhe zusätzlich die Gesamtreichweite
-  - *Letzte Fahrt (4×1):* Strecke, Dauer, Benzin- und Stromverbrauch (gesamt und pro 100 km); ab 2 Zeilen ausführlicher
-- **Datensicherung:** Export/Import als JSON und automatische tägliche Sicherung in einen wählbaren Ordner
-  (z. B. Google Drive) – alle Fahrzeuge, ohne Zugangsdaten; ältere Sicherungen gehen an das gewählte Fahrzeug
-- **API-Rohdaten:** die unveränderten JSON-Antworten zum Nachsehen/Kopieren
+- **Übersicht:** Akku, Tank, Reichweite, Türen/Fenster, Verriegelung, Ladestatus, Wartung, 12-V-Batterie, Standort
+- **Fernsteuerung:** Verriegeln, Vorklimatisierung, Laden starten/pausieren, Hupe, Lichtsignal, Status holen
+- **Ladelimit:** die App pausiert das Laden bei einem einstellbaren Akkustand – für Autos ohne eigenes Limit
+- **Fahrtenbuch:** Fahrten mit Kategorie und Notiz, automatische Zuordnung über Orte & Regeln,
+  myOpel-Import, CSV-Export
+- **Kosten & Statistik:** Tank- und Ladebuch, Kosten pro Fahrt und Monat, berechneter Akku-Verbrauch pro Fahrt
+- **Karte:** Fahrten mit grobem Streckenverlauf und Häufigkeitskarte (OpenStreetMap)
+- **Widgets:** Fahrzeug, Laden, Steuerung, Reichweite, letzte Fahrt
+- **Benachrichtigungen:** Laden fertig, Auto offen, 12-V-Batterie schwach, Wartung fällig
+- **Außerdem:** mehrere Fahrzeuge, Bereiche passend zur Antriebsart, tägliche Datensicherung, API-Rohdaten
+
+
+## FAQ
+
+### Fernsteuerung: „Aktivierung fehlgeschlagen … NOK:MAXNBTOOLS“ (oder „NOK:FORBIDDEN“)
+
+Opel hat die Fernsteuerung für das Konto gesperrt, weil zu oft per SMS aktiviert wurde (laut
+[psa_car_controller](https://github.com/flobz/psa_car_controller/blob/master/FAQ.md) nach 20 Aktivierungen).
+Dabei zählen alle Einrichtungen, ob in BlitzLink, in der MyOpel-App oder in anderen Tools. Weitere
+SMS-Codes anzufordern hilft nicht.
+
+So hebst du die Sperre auf:
+
+**Wenn die MyOpel-App installiert ist:**
+
+1. In der MyOpel-App das Konto mit deinem Namen auswählen.
+2. Bei „Smartphone registriert“ auf den Mülleimer tippen.
+3. In BlitzLink unter „Fernsteuerung“ neu einrichten.
+
+**Wenn die MyOpel-App nicht installiert ist:**
+
+1. Die MyOpel-App auf dem Handy installieren und mit dem Opel-Konto anmelden.
+2. Dort einen Fernbefehl ausprobieren. Die App sollte melden, dass das Konto zurückgesetzt werden muss –
+   diesem Hinweis folgen.
+3. Sobald die Fernsteuerung in der MyOpel-App funktioniert, in BlitzLink unter „Fernsteuerung“ neu einrichten.
+
+Damit die Sperre nicht wieder auftritt, die Freischaltung in BlitzLink nur zurücksetzen, wenn es nötig ist.
+Jede neue Einrichtung zählt als weitere Aktivierung.
 
 ## Login
 
@@ -110,8 +96,10 @@ Alternativ das Projekt in Android Studio öffnen und auf ▶ drücken.
 - Akku-Verbrauch: nur für Fahrten nach Beginn der Aufzeichnung. Liegen mehrere Fahrten zwischen zwei
   Messpunkten, wird nach Strecke aufgeteilt (≈); wurde dazwischen geladen, ist keine Berechnung möglich.
 
+
 ## Halte mich wach! ☕
 [![Yellow button with a steaming coffee cup and the text Buy me a coffee, in a cheerful banner style](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/mj1985)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/T5Q52BAE6A)
 
 
 ## Lizenz
