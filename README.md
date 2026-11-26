@@ -69,9 +69,7 @@ Für diese Fahrt berechnet die App dann keinen Akku-Verbrauch und zeigt auch kei
 
 ### Client-Secret
 
-Client-IDs und Client-Secrets gehören zur MyOpel-App. Wie andere inoffizielle Tools nutzt BlitzLink die
-Werte aus `configs.json` des Projekts *homeassistant-stellantis-vehicles* (Eintrag `MyOpel`); sie stehen in
-`ApiConfig.kt`. Ändert Opel ein Secret, lässt sich unter „API-Zugang & manueller Login“ ein eigenes
+Ändert Opel ein Secret, lässt sich unter „API-Zugang & manueller Login“ ein eigenes
 eintragen – es hat Vorrang vor dem hinterlegten.
 
 Tokens und Secret liegen mit einem Android-Keystore-Schlüssel verschlüsselt auf dem Gerät.
@@ -86,6 +84,20 @@ gradlew.bat assembleDebug
 APK: `app/build/outputs/apk/debug/app-debug.apk` – aufs Handy kopieren und installieren
 („Installation aus unbekannten Quellen“ erlauben) oder per `adb install`.
 Alternativ das Projekt in Android Studio öffnen und auf ▶ drücken.
+
+### Release
+
+Ein Tag `vX.Y` bzw. `vX.Y.Z` pushen – der Workflow [release.yml](.github/workflows/release.yml) testet,
+baut die signierte APK `BlitzLink-X.Y.apk` und legt das GitHub-Release mit Änderungen und Prüfsummen an:
+
+```
+git tag v1.1
+git push origin v1.1
+```
+
+Die Version der App kommt aus dem Tag (`versionCode` = Haupt × 10000 + Neben × 100 + Patch).
+Der Keystore liegt als Repository-Secret `RELEASE_KEYSTORE_BASE64` (Base64) auf GitHub, dazu
+`RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` und `RELEASE_KEY_PASSWORD`.
 
 ## Grenzen
 
