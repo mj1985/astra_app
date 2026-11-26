@@ -1,7 +1,5 @@
 package com.astraconnect.app.data
 
-import com.astraconnect.app.BuildConfig
-
 /**
  * Endpunkte der Stellantis (ehem. PSA) Connected-Car-API v4, wie sie auch die MyOpel-App nutzt.
  */
@@ -16,6 +14,10 @@ object ApiConfig {
 
     /** Client-ID der MyOpel-App für einige weitere Märkte (Baltikum, Malta, Neuseeland, Taiwan). */
     private const val ALT_CLIENT_ID = "a009239a-ed2a-49f9-9e6f-3f59703d469d"
+
+    // Client-Secrets der MyOpel-App, Quelle: configs.json von „homeassistant-stellantis-vehicles“ (MyOpel)
+    private const val DEFAULT_CLIENT_SECRET = "F2kK7lC5kF5qN7tM0wT8kE3cW1dP0wC5pI6vC0sQ5iP5cN8cJ8"
+    private const val ALT_CLIENT_SECRET = "M5yW4sE5qU6pO6jO4vH2qE0qS6gH6lR6cJ6kW1pE5cM6nM7sS0"
 
     const val DEFAULT_COUNTRY = "DE"
 
@@ -81,13 +83,10 @@ object ApiConfig {
     /** Client-IDs, die zu einem bekannten Markt gehören (zum Erkennen „nicht selbst geändert“). */
     fun isMarketClientId(id: String) = MARKETS.any { it.clientId == id }
 
-    /**
-     * Beim Build hinterlegtes Client-Secret zur Client-ID (aus local.properties, siehe README).
-     * Leer, wenn nichts hinterlegt ist oder die Client-ID unbekannt ist.
-     */
+    /** In der App hinterlegtes Client-Secret zur Client-ID. Leer, wenn die Client-ID unbekannt ist. */
     fun builtInSecret(clientId: String): String = when (clientId.trim()) {
-        DEFAULT_CLIENT_ID -> BuildConfig.MYOPEL_SECRET
-        ALT_CLIENT_ID -> BuildConfig.MYOPEL_SECRET_ALT
+        DEFAULT_CLIENT_ID -> DEFAULT_CLIENT_SECRET
+        ALT_CLIENT_ID -> ALT_CLIENT_SECRET
         else -> ""
     }
 }

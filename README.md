@@ -20,7 +20,8 @@ nutzbar auch für Elektroautos und Verbrenner/Mild-Hybride.
 
 ## FAQ
 
-### Fernsteuerung: „Aktivierung fehlgeschlagen … NOK:MAXNBTOOLS“ (oder „NOK:FORBIDDEN“)
+<details>
+<summary><b>Fernsteuerung: „Aktivierung fehlgeschlagen … NOK:MAXNBTOOLS“ (oder „NOK:FORBIDDEN“)</b></summary>
 
 Opel hat die Fernsteuerung für das Konto gesperrt, weil zu oft per SMS aktiviert wurde (laut
 [psa_car_controller](https://github.com/flobz/psa_car_controller/blob/master/FAQ.md) nach 20 Aktivierungen).
@@ -45,32 +46,33 @@ So hebst du die Sperre auf:
 Damit die Sperre nicht wieder auftritt, die Freischaltung in BlitzLink nur zurücksetzen, wenn es nötig ist.
 Jede neue Einrichtung zählt als weitere Aktivierung.
 
+</details>
+
+<details>
+<summary><b>Plug-in-Hybrid: Kein Akku-Verbrauch bei Fahrten mit leerem Akku</b></summary>
+
+Fährst du mit 0 % Akku los und kommst mit 0 % an, ist der Hybrid nur mit dem Verbrenner gefahren.
+Für diese Fahrt berechnet die App dann keinen Akku-Verbrauch und zeigt auch keinen an.
+
+</details>
+
 ## Login
 
 1. App starten → **Land** des MyOpel-Kontos wählen (Standard: Deutschland). Das Land bestimmt
    Sprache der Anmeldeseite, Redirect und Client-ID.
-2. Client-ID ist passend zum Land vorbelegt. Ist beim Build kein Client-Secret hinterlegt (siehe unten),
-   „API-Zugang & manueller Login“ aufklappen und das **Client-Secret** der MyOpel-App eintragen
-   (z. B. aus `configs.json` des Projekts *homeassistant-stellantis-vehicles*, Eintrag `MyOpel` → Land).
+2. Client-ID und Client-Secret der MyOpel-App sind passend zum Land in der App hinterlegt (siehe unten).
 3. „Mit MyOpel anmelden“ → Login auf der Opel-Seite. Die App fängt den Redirect
    `mymopsdk://oauth2redirect/<land>?code=…` ab und tauscht den Code gegen Tokens.
 4. Falls die Anmeldeseite in der App nicht funktioniert (z. B. Captcha): Anmelde-Link kopieren,
    im PC-Browser mit Entwicklertools öffnen, nach dem Login den `code` aus der Redirect-URL
    in das Feld „Code“ einfügen.
 
-### Client-Secret beim Build hinterlegen (optional)
+### Client-Secret
 
-Die Secrets gehören zur MyOpel-App und liegen deshalb **nicht im Repo**. Wer sie in `local.properties`
-(von Git ignoriert) einträgt, bekommt eine App, in der das Secret schon vorbelegt ist:
-
-```properties
-# für Client-ID 07364655-93cb-4194-8158-6b035ac2c24c (die meisten Länder, u. a. DE/AT/CH)
-myopel.clientSecret=…
-# für Client-ID a009239a-ed2a-49f9-9e6f-3f59703d469d (EE, LT, LV, MT, NZ, TW)
-myopel.clientSecret.alt=…
-```
-
-Ein in der App selbst eingetragenes Secret hat Vorrang, z. B. falls Opel es einmal ändert.
+Client-IDs und Client-Secrets gehören zur MyOpel-App. Wie andere inoffizielle Tools nutzt BlitzLink die
+Werte aus `configs.json` des Projekts *homeassistant-stellantis-vehicles* (Eintrag `MyOpel`); sie stehen in
+`ApiConfig.kt`. Ändert Opel ein Secret, lässt sich unter „API-Zugang & manueller Login“ ein eigenes
+eintragen – es hat Vorrang vor dem hinterlegten.
 
 Tokens und Secret liegen mit einem Android-Keystore-Schlüssel verschlüsselt auf dem Gerät.
 Das Passwort speichert die App nicht.
@@ -107,6 +109,6 @@ Alternativ das Projekt in Android Studio öffnen und auf ▶ drücken.
 GPL-3.0 – siehe [LICENSE](LICENSE). Teile sind aus Open-Source-Projekten übernommen bzw. portiert:
 [psa_car_controller](https://github.com/flobz/psa_car_controller) (GPL-3.0; OTP-Erzeugung, Modellliste `car_models.yml`)
 und [homeassistant-stellantis-vehicles](https://github.com/andreadegiovine/homeassistant-stellantis-vehicles)
-(MIT, Copyright (c) 2023 andreadegiovine; Lizenztext dort).
+(MIT, Copyright (c) 2023 andreadegiovine; Lizenztext dort; Märkte, Client-IDs und Client-Secrets aus `configs.json`).
 
 Inoffizielle App – nicht mit Opel oder Stellantis verbunden. „Opel“ und „Astra“ sind Marken ihrer jeweiligen Inhaber.
