@@ -102,6 +102,9 @@ APK: `app/build/outputs/apk/debug/app-debug.apk` – aufs Handy kopieren und ins
 („Installation aus unbekannten Quellen“ erlauben) oder per `adb install`.
 Alternativ das Projekt in Android Studio öffnen und auf ▶ drücken.
 
+Die Debug-Version heißt „BlitzLink Debug“ (`com.astraconnect.app.debug`) und lässt sich neben dem Release
+installieren. Sie hat eigene Daten, Anmeldung und Fernsteuerungs-Freischaltung.
+
 
 ## Lizenz
 

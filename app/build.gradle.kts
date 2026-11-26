@@ -48,6 +48,11 @@ android {
     }
 
     buildTypes {
+        // Eigene Paket-ID: Debug- und Release-Version lassen sich nebeneinander installieren
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false

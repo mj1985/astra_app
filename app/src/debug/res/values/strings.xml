@@ -1,0 +1,4 @@
+<resources>
+    <!-- Name der Debug-Version, damit sie neben dem Release erkennbar ist -->
+    <string name="app_name">BlitzLink Debug</string>
+</resources>
