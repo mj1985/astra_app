@@ -67,6 +67,23 @@ Für diese Fahrt berechnet die App dann keinen Akku-Verbrauch und zeigt auch kei
    im PC-Browser mit Entwicklertools öffnen, nach dem Login den `code` aus der Redirect-URL
    in das Feld „Code“ einfügen.
 
+## Grenzen
+
+- Die API liefert den zuletzt vom Auto gemeldeten Stand. Für frische Daten: Fernsteuerung → „Status holen“.
+- Fensterstatus wird von vielen Astra-Modellen nicht an die API übertragen – dann zeigt die App einen Hinweis.
+- Die Felder der Fahrten sind nicht offiziell dokumentiert; die App liest mehrere mögliche Feldnamen.
+  Fehlt etwas, hilft der Bildschirm „API-Rohdaten“ bzw. „Rohdaten anzeigen“ bei einer Fahrt.
+- Fernsteuerung: einmalige Freischaltung per SMS-Code + MyOpel-PIN (Menü „Fernsteuerung“). Opel erlaubt nur
+  wenige neue Sicherheitscodes pro Tag; das Token wird 3 Tage lang automatisch erneuert.
+- Akku-Verbrauch: nur für Fahrten nach Beginn der Aufzeichnung. Liegen mehrere Fahrten zwischen zwei
+  Messpunkten, wird nach Strecke aufgeteilt (≈); wurde dazwischen geladen, ist keine Berechnung möglich.
+
+
+## Halte mich wach! ☕
+[![Yellow button with a steaming coffee cup and the text Buy me a coffee, in a cheerful banner style](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/mj1985)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/T5Q52BAE6A)
+
+
 ### Client-Secret
 
 Ändert Opel ein Secret, lässt sich unter „API-Zugang & manueller Login“ ein eigenes
@@ -84,36 +101,6 @@ gradlew.bat assembleDebug
 APK: `app/build/outputs/apk/debug/app-debug.apk` – aufs Handy kopieren und installieren
 („Installation aus unbekannten Quellen“ erlauben) oder per `adb install`.
 Alternativ das Projekt in Android Studio öffnen und auf ▶ drücken.
-
-### Release
-
-Ein Tag `vX.Y` bzw. `vX.Y.Z` pushen – der Workflow [release.yml](.github/workflows/release.yml) testet,
-baut die signierte APK `BlitzLink-X.Y.apk` und legt das GitHub-Release mit Änderungen und Prüfsummen an:
-
-```
-git tag v1.1
-git push origin v1.1
-```
-
-Die Version der App kommt aus dem Tag (`versionCode` = Haupt × 10000 + Neben × 100 + Patch).
-Der Keystore liegt als Repository-Secret `RELEASE_KEYSTORE_BASE64` (Base64) auf GitHub, dazu
-`RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` und `RELEASE_KEY_PASSWORD`.
-
-## Grenzen
-
-- Die API liefert den zuletzt vom Auto gemeldeten Stand. Für frische Daten: Fernsteuerung → „Status holen“.
-- Fensterstatus wird von vielen Astra-Modellen nicht an die API übertragen – dann zeigt die App einen Hinweis.
-- Die Felder der Fahrten sind nicht offiziell dokumentiert; die App liest mehrere mögliche Feldnamen.
-  Fehlt etwas, hilft der Bildschirm „API-Rohdaten“ bzw. „Rohdaten anzeigen“ bei einer Fahrt.
-- Fernsteuerung: einmalige Freischaltung per SMS-Code + MyOpel-PIN (Menü „Fernsteuerung“). Opel erlaubt nur
-  wenige neue Sicherheitscodes pro Tag; das Token wird 3 Tage lang automatisch erneuert.
-- Akku-Verbrauch: nur für Fahrten nach Beginn der Aufzeichnung. Liegen mehrere Fahrten zwischen zwei
-  Messpunkten, wird nach Strecke aufgeteilt (≈); wurde dazwischen geladen, ist keine Berechnung möglich.
-
-
-## Halte mich wach! ☕
-[![Yellow button with a steaming coffee cup and the text Buy me a coffee, in a cheerful banner style](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/mj1985)
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/T5Q52BAE6A)
 
 
 ## Lizenz
