@@ -25,7 +25,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Keystore bereitstellen
         env:
@@ -47,11 +47,13 @@ jobs:
 
       - name: Signatur prüfen
         run: |
+          set -o pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           APK="BlitzLink-$VERSION.apk"
           cp app/build/outputs/apk/release/app-release.apk "$APK"
-          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
-          CERT=$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
+          # Build-Tools-Version, die AGP 8.13 für den Build installiert
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
+          CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apksigner.txt" \
             | tr a-f A-F | sed 's/../&:/g; s/:$//')
           if [ "$CERT" != "$EXPECTED_CERT" ]; then
             echo "::error::Falsches Signatur-Zertifikat: $CERT"
