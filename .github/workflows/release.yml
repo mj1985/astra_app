@@ -50,17 +50,23 @@ jobs:
           set -o pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           APK="BlitzLink-$VERSION.apk"
+          WEAR_APK="BlitzLink-Wear-$VERSION.apk"
           cp app/build/outputs/apk/release/app-release.apk "$APK"
-          # Build-Tools-Version, die AGP 8.13 für den Build installiert
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
-          CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apksigner.txt" \
-            | tr a-f A-F | sed 's/../&:/g; s/:$//')
-          if [ "$CERT" != "$EXPECTED_CERT" ]; then
-            echo "::error::Falsches Signatur-Zertifikat: $CERT"
-            exit 1
-          fi
+          cp wear/build/outputs/apk/release/wear-release.apk "$WEAR_APK"
+          # Handy- und Uhr-App brauchen denselben Schlüssel, sonst finden sie sich nicht
+          for f in "$APK" "$WEAR_APK"; do
+            # Build-Tools-Version, die AGP 8.13 für den Build installiert
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$f" | tee "$RUNNER_TEMP/apksigner.txt"
+            CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apksigner.txt" \
+              | tr a-f A-F | sed 's/../&:/g; s/:$//')
+            if [ "$CERT" != "$EXPECTED_CERT" ]; then
+              echo "::error::Falsches Signatur-Zertifikat in $f: $CERT"
+              exit 1
+            fi
+          done
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "APK=$APK" >> "$GITHUB_ENV"
+          echo "WEAR_APK=$WEAR_APK" >> "$GITHUB_ENV"
           echo "CERT=$CERT" >> "$GITHUB_ENV"
 
       - name: Release anlegen
@@ -69,6 +75,7 @@ jobs:
         run: |
           TAG="$GITHUB_REF_NAME"
           SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          WEAR_SHA=$(sha256sum "$WEAR_APK" | cut -d' ' -f1)
           PREV=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
           {
             echo "> Inoffizielle App, nicht mit Opel oder Stellantis verbunden."
@@ -83,12 +90,15 @@ jobs:
             echo "### Installation"
             echo "\`$APK\` herunterladen und auf dem Smartphone öffnen (Installation aus unbekannten Quellen erlauben). Mindestens Android 8.0."
             echo
+            echo "Optional für die Uhr (Wear OS 3 oder neuer): \`$WEAR_APK\` per ADB installieren – Anleitung in der [README](https://github.com/$GITHUB_REPOSITORY#wear-os)."
+            echo
             echo "### Prüfsummen"
             echo "- Signatur-Zertifikat (SHA-256): \`$CERT\`"
             echo "- APK (SHA-256): \`$SHA\`"
+            echo "- Wear-APK (SHA-256): \`$WEAR_SHA\`"
           } > notes.md
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" "$APK" --clobber
+            gh release upload "$TAG" "$APK" "$WEAR_APK" --clobber
           else
-            gh release create "$TAG" "$APK" --title "BlitzLink $VERSION" --notes-file notes.md
+            gh release create "$TAG" "$APK" "$WEAR_APK" --title "BlitzLink $VERSION" --notes-file notes.md
           fi

@@ -5,7 +5,9 @@ import android.util.Log
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -76,6 +78,16 @@ class SnapshotWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
     companion object {
         private const val TAG = "SnapshotWorker"
         private const val NAME = "energy_snapshots"
+
+        /** Einmal sofort abrufen (z. B. auf Wunsch der Uhr); läuft schon ein Abruf, bleibt es bei dem. */
+        fun runOnce(ctx: Context) {
+            WorkManager.getInstance(ctx).enqueueUniqueWork(
+                "${NAME}_now", ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<SnapshotWorker>()
+                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .build(),
+            )
+        }
 
         fun schedule(ctx: Context, enabled: Boolean) {
             val wm = WorkManager.getInstance(ctx)

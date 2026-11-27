@@ -105,11 +105,16 @@ class ControlWidget : BaseWidget() {
         const val EXTRA_CMD = "cmd"
         const val EXTRA_VEHICLE = "vehicle"
 
-        /** Tastendruck aus einem Widget: Befehl vormerken (Taste zeigt „Sende …“) und im Hintergrund senden. */
+        /** Tastendruck aus einem Widget. */
         internal fun handleCommand(context: Context, intent: Intent) {
             if (intent.action != ACTION_COMMAND) return
             val cmd = intent.getStringExtra(EXTRA_CMD)?.let { runCatching { WidgetCommand.valueOf(it) }.getOrNull() } ?: return
             val vehicleId = intent.getStringExtra(EXTRA_VEHICLE) ?: Garage.selectedId(context)
+            enqueue(context, cmd, vehicleId)
+        }
+
+        /** Befehl vormerken (Taste zeigt „Sende …“) und im Hintergrund senden – aus Widget oder Uhr. */
+        fun enqueue(context: Context, cmd: WidgetCommand, vehicleId: String) {
             if (!PendingCommands.add(context, cmd.pendingKey(vehicleId))) return // läuft schon
             Widgets.updateAll(context)
             WorkManager.getInstance(context).enqueueUniqueWork(

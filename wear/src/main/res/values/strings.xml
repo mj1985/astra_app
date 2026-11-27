@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">BlitzLink</string>
+    <string name="tile_label">BlitzLink</string>
+    <string name="tile_description">Akku, Reichweite und Ladestatus – mit Tasten für Klima und Verriegeln</string>
+    <string name="complication_label">BlitzLink Akku</string>
+</resources>

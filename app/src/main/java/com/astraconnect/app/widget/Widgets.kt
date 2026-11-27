@@ -19,6 +19,7 @@ import com.astraconnect.app.data.Vehicle
 import com.astraconnect.app.data.VehicleProfile
 import com.astraconnect.app.data.VehicleSettings
 import com.astraconnect.app.data.VehicleStatus
+import com.astraconnect.app.wear.WearSync
 import org.json.JSONObject
 import java.time.Instant
 import java.time.ZoneId
@@ -43,7 +44,10 @@ object Widgets {
         TripWidget::class.java to TripWidget::render,
     )
 
-    /** Aktualisiert alle Widgets. Fehler hier dürfen den Abruf in App/Hintergrund-Job nie abbrechen. */
+    /**
+     * Aktualisiert alle Widgets und schickt den Stand an die Uhr ([WearSync]).
+     * Fehler hier dürfen den Abruf in App/Hintergrund-Job nie abbrechen.
+     */
     fun updateAll(ctx: Context, done: (() -> Unit)? = null) {
         val app = ctx.applicationContext
         executor.execute {
@@ -51,6 +55,11 @@ object Widgets {
                 renderAll(app)
             } catch (e: Throwable) {
                 Log.w(TAG, "Widget-Update fehlgeschlagen", e)
+            }
+            try {
+                WearSync.push(app)
+            } catch (e: Throwable) {
+                Log.w(TAG, "Abgleich mit der Uhr fehlgeschlagen", e)
             } finally {
                 done?.invoke()
             }

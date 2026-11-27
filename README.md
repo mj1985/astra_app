@@ -14,6 +14,7 @@ nutzbar auch für Elektroautos und Verbrenner/Mild-Hybride.
 - **Kosten & Statistik:** Tank- und Ladebuch, Kosten pro Fahrt und Monat, berechneter Akku-Verbrauch pro Fahrt
 - **Karte:** Fahrten mit grobem Streckenverlauf und Häufigkeitskarte (OpenStreetMap)
 - **Widgets:** Fahrzeug, Laden, Steuerung, Reichweite, letzte Fahrt
+- **Uhr (Wear OS):** Tile mit Akku, Reichweite, Ladestatus, Klima und Verriegeln; Complication mit Akkustand
 - **Benachrichtigungen:** Laden fertig, Auto offen, 12-V-Batterie schwach, Wartung fällig
 - **Außerdem:** mehrere Fahrzeuge, Bereiche passend zur Antriebsart, tägliche Datensicherung, API-Rohdaten
 
@@ -67,6 +68,30 @@ Für diese Fahrt berechnet die App dann keinen Akku-Verbrauch und zeigt auch kei
    im PC-Browser mit Entwicklertools öffnen, nach dem Login den `code` aus der Redirect-URL
    in das Feld „Code“ einfügen.
 
+## Wear OS
+
+Optional gibt es eine Uhr-App für Wear OS 3 oder neuer (z. B. Pixel Watch, Galaxy Watch ab Watch4):
+
+- **Tile:** Akkustand als Ring (beim Verbrenner der Tank), Reichweite, Ladestatus und Tasten für Klima und
+  Verriegeln. Jeder Befehl will einmal bestätigt werden; ein Tipp auf den Akkustand holt einen neuen Stand.
+- **Complication:** Akkustand fürs Zifferblatt, als Ring oder Text.
+
+Die Uhr zeigt das in der Handy-App gewählte Fahrzeug. Daten und Befehle laufen über das gekoppelte Handy:
+Die Uhr braucht keine eigene Anmeldung, die Fernsteuerung muss aber in der Handy-App eingerichtet sein.
+
+**Installation:** `BlitzLink-Wear-X.Y.apk` aus den Releases laden. Auf der Uhr die Entwickleroptionen
+einschalten (in den Einstellungen unter „System → Info“ mehrmals auf die Build-Nummer tippen, je nach Uhr
+leicht anders), dort „ADB-Debugging“ und „Debugging über WLAN“ aktivieren. Dann vom PC im selben WLAN:
+
+```
+adb pair <IP>:<Port>       # Kopplungscode und Adresse unter „Neues Gerät koppeln“
+adb connect <IP>:<Port>    # Adresse unter „Debugging über WLAN“
+adb install BlitzLink-Wear-X.Y.apk
+```
+
+Danach in der Tile-Auswahl „BlitzLink“ hinzufügen bzw. im Zifferblatt-Editor die Complication „BlitzLink Akku“
+wählen. Handy- und Uhr-App müssen zusammenpassen (beide Release oder beide Debug), sonst finden sie sich nicht.
+
 ## Grenzen
 
 - Die API liefert den zuletzt vom Auto gemeldeten Stand. Für frische Daten: Fernsteuerung → „Status holen“.
@@ -104,6 +129,10 @@ Alternativ das Projekt in Android Studio öffnen und auf ▶ drücken.
 
 Die Debug-Version heißt „BlitzLink Debug“ (`com.astraconnect.app.debug`) und lässt sich neben dem Release
 installieren. Sie hat eigene Daten, Anmeldung und Fernsteuerungs-Freischaltung.
+
+Uhr-App: `wear/build/outputs/apk/debug/wear-debug.apk`. Die Debug-Version enthält eine Tile-Vorschau mit
+Beispieldaten, die auch auf einem Handy-Emulator läuft:
+`adb shell am start -n com.astraconnect.app.debug/com.astraconnect.wear.TilePreviewActivity`
 
 
 ## Lizenz

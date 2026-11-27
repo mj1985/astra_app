@@ -14,3 +14,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "AstraConnect"
 include(":app")
+include(":wear")
+include(":wear-shared")

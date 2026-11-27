@@ -1,25 +1,16 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val localProps = Properties().apply {
-    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
-}
-
-/** Wert aus local.properties, sonst aus der Umgebungsvariablen (Release-Workflow auf GitHub). */
-fun localOrEnv(key: String, env: String): String? =
-    localProps.getProperty(key)?.takeIf { it.isNotBlank() } ?: System.getenv(env)?.takeIf { it.isNotBlank() }
-
-// Version aus dem Git-Tag (Release-Workflow: -PappVersion=v1.2), sonst 1.0.
-// versionCode = Haupt × 10000 + Neben × 100 + Patch, damit jede neue Version als Update installiert werden kann.
-val appVersion = ((findProperty("appVersion") as String?) ?: "1.0").removePrefix("v")
-val appVersionCode = Regex("""(\d+)\.(\d+)(?:\.(\d+))?""").matchEntire(appVersion)
-    ?.destructured?.let { (major, minor, patch) -> major.toInt() * 10000 + minor.toInt() * 100 + (patch.toIntOrNull() ?: 0) }
-    ?: error("Version „$appVersion“ hat nicht die Form 1.2 oder 1.2.3")
+// Version und Signierung kommen aus der build.gradle.kts im Hauptordner (gemeinsam mit der Uhr-App)
+val appVersion: String by rootProject.extra
+val appVersionCode: Int by rootProject.extra
+val releaseStoreFile: String by rootProject.extra
+val releaseStorePassword: String by rootProject.extra
+val releaseKeyAlias: String by rootProject.extra
+val releaseKeyPassword: String by rootProject.extra
 
 android {
     namespace = "com.astraconnect.app"
@@ -33,16 +24,13 @@ android {
         versionName = appVersion
     }
 
-    // Release-Signierung: Keystore und Passwörter kommen aus local.properties (nicht im Repo),
-    // im Release-Workflow aus den Umgebungsvariablen RELEASE_*. Fehlen sie, wird der Release-Build unsigniert gebaut.
-    val releaseStoreFile = localOrEnv("release.storeFile", "RELEASE_STORE_FILE")?.trim()
     signingConfigs {
-        if (releaseStoreFile != null) {
+        if (releaseStoreFile.isNotEmpty()) {
             create("release") {
                 storeFile = file(releaseStoreFile)
-                storePassword = localOrEnv("release.storePassword", "RELEASE_STORE_PASSWORD")
-                keyAlias = localOrEnv("release.keyAlias", "RELEASE_KEY_ALIAS")
-                keyPassword = localOrEnv("release.keyPassword", "RELEASE_KEY_PASSWORD")
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
@@ -98,6 +86,9 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.1.0")
     // Karten (OpenStreetMap)
     implementation("org.osmdroid:osmdroid-android:6.1.20")
+    // Uhr-App (Wear OS): Status an die Uhr, Befehle von der Uhr
+    implementation(project(":wear-shared"))
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
 
     testImplementation("junit:junit:4.13.2")
     // Echte org.json-Implementierung für Unit-Tests (Android-Stub liefert nur Defaultwerte)

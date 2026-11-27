@@ -1,0 +1,6 @@
+<resources>
+    <!-- Debug-Version: passt zur Handy-App „BlitzLink Debug“ (gleiche Paket-ID com.astraconnect.app.debug) -->
+    <string name="app_name">BlitzLink Debug</string>
+    <string name="tile_label">BlitzLink Debug</string>
+    <string name="complication_label">BlitzLink Debug Akku</string>
+</resources>

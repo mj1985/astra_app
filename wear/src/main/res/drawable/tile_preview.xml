@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vorschau in der Tile-Auswahl: Akku-Ring mit Blitz und zwei Tasten -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="192dp" android:height="192dp"
+    android:viewportWidth="192" android:viewportHeight="192">
+    <path android:fillColor="#000000" android:pathData="M96,0a96,96 0,1 1,0 192a96,96 0,1 1,0 -192z" />
+    <path android:strokeColor="#33FFFFFF" android:strokeWidth="8"
+        android:pathData="M96,8a88,88 0,1 1,0 176a88,88 0,1 1,0 -176" />
+    <path android:strokeColor="#F7FF14" android:strokeWidth="8" android:strokeLineCap="round"
+        android:pathData="M96,8A88,88 0,1 1,9.6,79.5" />
+    <group android:scaleX="2.5" android:scaleY="2.5" android:translateX="66" android:translateY="40">
+        <path android:fillColor="#F7FF14"
+            android:pathData="M11,21h-1l1,-7H7.5c-0.58,0 -0.57,-0.32 -0.38,-0.66 0.19,-0.34 0.05,-0.08 0.07,-0.12C8.48,10.94 10.42,7.54 13,3h1l-1,7h3.5c0.49,0 0.56,0.33 0.47,0.51l-0.07,0.15C12.96,17.55 11,21 11,21z" />
+    </group>
+    <path android:fillColor="#303134" android:pathData="M76,124a16,16 0,1 1,0 32a16,16 0,1 1,0 -32z" />
+    <path android:fillColor="#303134" android:pathData="M116,124a16,16 0,1 1,0 32a16,16 0,1 1,0 -32z" />
+</vector>
