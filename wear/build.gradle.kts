@@ -7,6 +7,7 @@ plugins {
 // Gleiche Version und gleicher Schlüssel wie die Handy-App (build.gradle.kts im Hauptordner)
 val appVersion: String by rootProject.extra
 val appVersionCode: Int by rootProject.extra
+val debugVersionCode: Int by rootProject.extra
 val releaseStoreFile: String by rootProject.extra
 val releaseStorePassword: String by rootProject.extra
 val releaseKeyAlias: String by rootProject.extra
@@ -50,6 +51,13 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+// Debug-Builds: fester, hoher versionCode – verhindert „INSTALL_FAILED_VERSION_DOWNGRADE“ beim Neuinstallieren
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.outputs.forEach { it.versionCode.set(debugVersionCode) }
     }
 }
 

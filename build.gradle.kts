@@ -28,6 +28,10 @@ val appVersionCode = Regex("""(\d+)\.(\d+)(?:\.(\d+))?""").matchEntire(appVersio
 extra["appVersion"] = appVersion
 extra["appVersionCode"] = appVersionCode
 
+// Debug-Builds bekommen einen festen, hohen versionCode (unabhängig vom Release-Tag).
+// So ist ein erneutes Installieren nie ein Downgrade – egal, mit welchem -PappVersion gebaut wurde.
+extra["debugVersionCode"] = 2_000_000_000
+
 // Release-Signierung: Keystore und Passwörter aus local.properties (nicht im Repo), im Release-Workflow
 // aus den Umgebungsvariablen RELEASE_*. Ohne Keystore werden Release-Builds unsigniert gebaut.
 extra["releaseStoreFile"] = localOrEnv("release.storeFile", "RELEASE_STORE_FILE").trim()
