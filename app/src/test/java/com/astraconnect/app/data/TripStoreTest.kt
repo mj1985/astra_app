@@ -204,4 +204,79 @@ class TripStoreTest {
         assertTrue(text.contains("Zuhause – "))
         assertNotNull(text)
     }
+
+    // ------------------------------------------------------------------ Startpunkt wie in myOpel
+
+    private val shop = LatLon(53.87, 10.70)
+
+    @Test
+    fun startEqualsEnd_isReplacedByEndOfPreviousTrip() {
+        // Nutzerbericht: Opel liefert für die zweite Fahrt Start = Ziel (beide beim Supermarkt)
+        store.merge(
+            listOf(
+                api("t1", "2026-11-10T07:00:00Z", "2026-11-10T07:10:00Z", 4.6, 100.0, from = home, to = work),
+                api("t2", "2026-11-10T16:00:00Z", "2026-11-10T16:15:00Z", 9.0, 104.8, from = shop, to = shop),
+            )
+        )
+        val t2 = store.load().first { it.key == "t2" }
+        assertEquals(work, t2.startPos)
+        assertEquals(shop, t2.endPos)
+        // Rohdaten bleiben unverändert
+        assertEquals(shop.lat, t2.raw.getJSONObject("startPosition").getDouble("latitude"), 0.0)
+        assertEquals(work, store.loadSingles().first { it.key == "t2" }.startPos)
+    }
+
+    @Test
+    fun startAddressComesFromPreviousTrip() {
+        store.merge(
+            listOf(
+                api("t1", "2026-11-10T07:00:00Z", "2026-11-10T07:10:00Z", 4.6, 100.0, from = home, to = work),
+                api("t2", "2026-11-10T16:00:00Z", "2026-11-10T16:15:00Z", 9.0, 104.6, from = shop, to = shop),
+            )
+        )
+        store.update("t1", endAddress = "Seelandstraße 14, 23569 Lübeck")
+        store.update("t2", startAddress = "falsch aus alten Koordinaten")
+        assertEquals("Seelandstraße 14, 23569 Lübeck", store.load().first { it.key == "t2" }.startAddress)
+    }
+
+    @Test
+    fun gapInMileage_keepsReportedStart() {
+        // 3 km Lücke (z. B. Fahrt fehlt) – dann bleibt der gemeldete Start
+        store.merge(
+            listOf(
+                api("t1", "2026-11-10T07:00:00Z", "2026-11-10T07:10:00Z", 4.6, 100.0, from = home, to = work),
+                api("t2", "2026-11-10T16:00:00Z", "2026-11-10T16:15:00Z", 9.0, 107.6, from = shop, to = home),
+            )
+        )
+        assertEquals(shop, store.load().first { it.key == "t2" }.startPos)
+    }
+
+    @Test
+    fun shortFollowUpTrip_isNotTakenAsPredecessor() {
+        // t2 endet kilometermäßig nah am Start von t1, liegt aber zeitlich danach
+        store.merge(
+            listOf(
+                api("t1", "2026-11-10T07:00:00Z", "2026-11-10T07:02:00Z", 0.2, 100.0, from = home, to = work),
+                api("t2", "2026-11-10T07:30:00Z", "2026-11-10T07:32:00Z", 0.1, 100.2, from = work, to = shop),
+            )
+        )
+        val trips = store.load()
+        assertEquals(home, trips.first { it.key == "t1" }.startPos)
+        assertEquals(work, trips.first { it.key == "t2" }.startPos)
+    }
+
+    @Test
+    fun mergedTrip_usesCorrectedStartOfFirstPart() {
+        store.merge(
+            listOf(
+                api("t1", "2026-11-10T07:00:00Z", "2026-11-10T07:10:00Z", 4.6, 100.0, from = home, to = work),
+                api("t2", "2026-11-10T16:00:00Z", "2026-11-10T16:15:00Z", 9.0, 104.6, from = shop, to = shop),
+                api("t3", "2026-11-10T16:20:00Z", "2026-11-10T16:30:00Z", 3.0, 113.6, from = home, to = home),
+            )
+        )
+        val merged = store.mergeWithPrevious("t3")
+        val trip = store.load().first { it.key == merged }
+        assertEquals(work, trip.startPos)   // Start von t2 = Ende von t1
+        assertEquals(home, trip.endPos)     // Ende von t3
+    }
 }

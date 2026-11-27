@@ -65,12 +65,15 @@ data class Trip(
     companion object {
         fun keyOf(raw: JSONObject) = raw.str("id") ?: raw.str("startedAt") ?: raw.toString().hashCode().toString()
 
-        /** Liest einen Eintrag; zusammengeführte Fahrten werden zu einer Fahrt kombiniert. */
-        fun parse(entry: JSONObject): Trip {
-            val base = parseSingle(entry)
+        /**
+         * Liest einen Eintrag; zusammengeführte Fahrten werden zu einer Fahrt kombiniert.
+         * [fix] wird auf jede Einzelfahrt angewandt (z. B. [startFromPrevious]).
+         */
+        fun parse(entry: JSONObject, fix: (Trip) -> Trip = { it }): Trip {
+            val base = fix(parseSingle(entry))
             val absorbed = entry.arr("absorbed").objects()
             if (absorbed.isEmpty()) return base
-            val parts = (listOf(base) + absorbed.map(::parseSingle)).sortedBy { it.startedAt ?: Instant.EPOCH }
+            val parts = (listOf(base) + absorbed.map { fix(parseSingle(it)) }).sortedBy { it.startedAt ?: Instant.EPOCH }
             val first = parts.first()
             val last = parts.last()
             fun sumOrNull(sel: (Trip) -> Double?) = parts.mapNotNull(sel).takeIf { it.isNotEmpty() }?.sum()
@@ -174,6 +177,45 @@ data class Trip(
             )
         }
 
+        /** Höchstens so weit (km) darf der Start vom Ende der Vorgängerfahrt abweichen – wie in der myOpel-App. */
+        internal const val CONTINUITY_KM = 0.4
+
+        /** Uhren von Auto und Server dürfen so weit auseinanderliegen. */
+        private val CONTINUITY_CLOCK: Duration = Duration.ofMinutes(2)
+
+        /**
+         * Startpunkt wie in der myOpel-App: Beginnt eine Fahrt dort, wo eine frühere endete (Kilometerstand
+         * ± [CONTINUITY_KM]), gelten deren Zielkoordinaten und -adresse als Start. Opel meldet als
+         * Startposition manchmal einen veralteten Standort – bis hin zu Start = Ziel. Die myOpel-App
+         * ersetzt den Start deshalb beim Speichern ebenso durch das Ende der letzten Fahrt
+         * (CloudTripExtensions.updateTicTrip). Liefert die Korrektur für eine Einzelfahrt aus [singles].
+         */
+        fun startFromPrevious(singles: List<Trip>): (Trip) -> Trip {
+            val ends = singles.filter { it.endPos != null && (it.endMileage ?: 0.0) > 0 }.sortedBy { it.endMileage }
+            if (ends.isEmpty()) return { it }
+            val endKm = DoubleArray(ends.size) { ends[it].endMileage!! }
+            return fix@{ t ->
+                val km = t.startMileage ?: return@fix t
+                // erste Fahrt mit Ende ≥ km − 0,4 (binäre Suche)
+                var lo = 0
+                var hi = ends.size
+                while (lo < hi) {
+                    val mid = (lo + hi) ushr 1
+                    if (endKm[mid] < km - CONTINUITY_KM) lo = mid + 1 else hi = mid
+                }
+                var prev: Trip? = null
+                for (i in lo until ends.size) {
+                    if (endKm[i] > km + CONTINUITY_KM) break
+                    val p = ends[i]
+                    if (p.key == t.key) continue
+                    // Vorgängerin muss vor dieser Fahrt geendet haben (sonst wäre es eine kurze Folgefahrt)
+                    if (p.stoppedAt != null && t.startedAt != null && p.stoppedAt.isAfter(t.startedAt.plus(CONTINUITY_CLOCK))) continue
+                    if (prev == null || compareValuesBy(p, prev, { it.stoppedAt }, { it.endMileage }) > 0) prev = p
+                }
+                prev?.let { t.copy(startPos = it.endPos, startAddress = it.endAddress) } ?: t
+            }
+        }
+
         private fun pos(raw: JSONObject, vararg keys: String): LatLon? {
             for (k in keys) {
                 val o = raw.obj(k) ?: continue
@@ -247,13 +289,23 @@ class TripStore(private val file: File, private val exportDir: File) {
         listOf(Leaf(top, top)) + top.arr("absorbed").objects().map { Leaf(it, top) }
     }
 
+    /** Startpunkt-Korrektur über alle Einzelfahrten ([Trip.startFromPrevious]). */
+    private fun startFix(entries: Map<String, JSONObject>): (Trip) -> Trip =
+        Trip.startFromPrevious(leaves(entries).map { Trip.parseSingle(it.json) })
+
     @Synchronized
-    fun load(): List<Trip> = readEntries().values.map(Trip::parse)
-        .sortedByDescending { it.startedAt ?: Instant.EPOCH }
+    fun load(): List<Trip> {
+        val entries = readEntries()
+        val fix = startFix(entries)
+        return entries.values.map { Trip.parse(it, fix) }.sortedByDescending { it.startedAt ?: Instant.EPOCH }
+    }
 
     /** Alle Einzelfahrten (Teilfahrten zusammengeführter Einträge einzeln). */
     @Synchronized
-    fun loadSingles(): List<Trip> = leaves(readEntries()).map { Trip.parseSingle(it.json) }
+    fun loadSingles(): List<Trip> {
+        val singles = leaves(readEntries()).map { Trip.parseSingle(it.json) }
+        return singles.map(Trip.startFromPrevious(singles))
+    }
 
     /** Unveränderte Einträge – für die Datensicherung. */
     @Synchronized
@@ -434,9 +486,10 @@ class TripStore(private val file: File, private val exportDir: File) {
     @Synchronized
     fun applyRules(categoryFor: (Trip) -> TripCategory?): Int {
         val entries = readEntries()
+        val fix = startFix(entries)
         var changed = 0
         for (e in entries.values) {
-            val t = Trip.parse(e)
+            val t = Trip.parse(e, fix)
             if (t.category != TripCategory.UNSET) continue
             val c = categoryFor(t) ?: continue
             e.put("category", c.name).put("auto", true)
