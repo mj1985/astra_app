@@ -72,6 +72,8 @@ class SnapshotWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
             val places = book.places()
             val rules = book.rules()
             trips.applyRules { PlaceBook.categoryFor(it, places, rules) }
+            // Adressen gleich auflösen, damit neue Fahrten nicht mit bloßen Koordinaten erscheinen
+            runCatching { TripGeocoder.resolveMissing(ctx, trips) }
         }
     }
 

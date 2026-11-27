@@ -48,6 +48,7 @@ import com.astraconnect.app.data.TripFollow
 import com.astraconnect.app.data.TrackPoint
 import com.astraconnect.app.data.Trip
 import com.astraconnect.app.data.TripCategory
+import com.astraconnect.app.data.TripGeocoder
 import com.astraconnect.app.data.TripStore
 import com.astraconnect.app.data.Vehicle
 import com.astraconnect.app.data.VehicleSettings
@@ -280,6 +281,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 routeVersion = if (newPoint) ui.routeVersion + 1 else ui.routeVersion,
             )
             recomputeBattery()
+            // Adressen neuer Fahrten (z. B. vom Hintergrund-Job) auflösen – im Hintergrund, ohne den Abruf aufzuhalten
+            viewModelScope.launch { resolveAddresses(Stores.trips(app, selected.id)) }
         } catch (e: AuthExpiredException) {
             ui = ui.copy(loggedIn = false, error = e.message)
         } catch (e: Exception) {
@@ -367,30 +370,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Fehlende Fahrt-Adressen im Hintergrund geokodieren und die Anzeige nachziehen. */
     private suspend fun resolveAddresses(store: TripStore) = withContext(Dispatchers.IO) {
-        if (!Geocoder.isPresent()) return@withContext
-        val geocoder = Geocoder(getApplication(), Locale.GERMANY)
-        val todo = store.loadSingles().filter {
-            (it.startAddress == null && it.startPos != null) || (it.endAddress == null && it.endPos != null)
-        }.take(40)
-        for (t in todo) {
-            val s = if (t.startAddress == null) t.startPos?.let { address(geocoder, it) } else null
-            val e = if (t.endAddress == null) t.endPos?.let { address(geocoder, it) } else null
-            if (s != null || e != null) store.update(t.key, startAddress = s, endAddress = e)
-        }
+        val changed = TripGeocoder.resolveMissing(getApplication(), store)
+        if (!changed) return@withContext
         val trips = store.load()
         withContext(Dispatchers.Main) { if (store === tripStore) ui = ui.copy(trips = trips) }
     }
-
-    @Suppress("DEPRECATION")
-    private fun address(geocoder: Geocoder, p: LatLon): String? = runCatching {
-        geocoder.getFromLocation(p.lat, p.lon, 1)?.firstOrNull()?.let { a ->
-            listOfNotNull(
-                listOfNotNull(a.thoroughfare, a.subThoroughfare).joinToString(" ").ifBlank { null },
-                listOfNotNull(a.postalCode, a.locality).joinToString(" ").ifBlank { null },
-            ).joinToString(", ").ifBlank { a.getAddressLine(0) }
-        }
-    }.getOrNull()
 
     /** Importiert einen myOpel-Export (*.myop oder ohne Endung) und gleicht ihn mit dem Fahrtenbuch ab. */
     fun importMyop(uri: Uri) = viewModelScope.launch {
