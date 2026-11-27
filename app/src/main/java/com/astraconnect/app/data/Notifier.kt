@@ -147,13 +147,19 @@ object Notifier {
             edit.putString("v12", today)
         }
 
-        // --- Wartung, höchstens einmal pro Woche
-        val days = s.maintenanceDays
-        val kmLeft = s.maintenanceKm
-        val due = (days != null && days <= 30) || (kmLeft != null && kmLeft <= 1000)
+        // --- Wartung, höchstens einmal pro Woche (eigener Termin hat Vorrang vor der API)
+        val vs = VehicleSettings(ctx, vehicleId)
+        val maint = MaintenanceInfo.resolve(
+            s.maintenanceDays, s.maintenanceKm, s.mileageKm, vs.maintenanceDueDate, vs.maintenanceDueMileage,
+        )
         val lastMaint = st.getString("maint", null)?.let(LocalDate::parse)
-        if (prefs.maintenance && due && (lastMaint == null || lastMaint.plusDays(7) <= LocalDate.now())) {
-            val parts = listOfNotNull(days?.let { "in ${it.toInt()} Tagen" }, kmLeft?.let { "in ${km(it)}" })
+        if (prefs.maintenance && maint.due && (lastMaint == null || lastMaint.plusDays(7) <= LocalDate.now())) {
+            fun part(left: Double?, overdue: String, soon: (Double) -> String) =
+                left?.let { if (it <= 0) overdue else soon(it) }
+            val parts = listOfNotNull(
+                part(maint.daysLeft, "seit ${(-maint.daysLeft!!).toInt()} Tagen überfällig") { "in ${it.toInt()} Tagen" },
+                part(maint.kmLeft, "seit ${km(-maint.kmLeft!!)} überfällig") { "in ${km(it)}" },
+            )
             postFor(ctx, vehicleId, ID_MAINT, CH_ALERT, "Wartung bald fällig", "Nächste Wartung ${parts.joinToString(" bzw. ")}.")
             edit.putString("maint", today)
         }

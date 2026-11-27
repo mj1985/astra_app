@@ -3,6 +3,7 @@ package com.astraconnect.app.data
 import android.content.Context
 import android.content.SharedPreferences
 import org.json.JSONObject
+import java.time.LocalDate
 
 /** Preise für die Kostenberechnung. */
 data class Prices(
@@ -57,6 +58,16 @@ class VehicleSettings(context: Context, val vehicleId: String) {
         get() = Powertrain.of(prefs.getString("powertrain", null))
         set(v) = prefs.edit().putString("powertrain", v?.name).apply()
 
+    /** Selbst eingetragenes Wartungsdatum; null = keines (siehe [MaintenanceInfo]). */
+    var maintenanceDueDate: LocalDate?
+        get() = prefs.getString("maint_due_date", null)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        set(v) = prefs.edit().apply { if (v == null) remove("maint_due_date") else putString("maint_due_date", v.toString()) }.apply()
+
+    /** Selbst eingetragener Kilometerstand bei Fälligkeit der Wartung (absolut); null = keiner. */
+    var maintenanceDueMileage: Double?
+        get() = if (prefs.contains("maint_due_km")) prefs.getFloat("maint_due_km", 0f).toDouble() else null
+        set(v) = prefs.edit().apply { if (v == null) remove("maint_due_km") else putFloat("maint_due_km", v.toFloat()) }.apply()
+
     /** Zuletzt abgerufener Status (Rohdaten der API). */
     val cachedStatus: JSONObject? get() = prefs.getString("cache_status", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
     val cachedMaintenance: JSONObject? get() = prefs.getString("cache_maint", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
@@ -74,6 +85,8 @@ class VehicleSettings(context: Context, val vehicleId: String) {
         .put("tank_l", tankLitersManual ?: JSONObject.NULL)
         .put("capacity_kwh", capacityKwhManual ?: JSONObject.NULL)
         .put("powertrain", powertrainManual?.name ?: JSONObject.NULL)
+        .put("maint_due_date", maintenanceDueDate?.toString() ?: JSONObject.NULL)
+        .put("maint_due_km", maintenanceDueMileage ?: JSONObject.NULL)
         .put("charge_limit_on", chargeLimit.enabled).put("charge_limit_pct", chargeLimit.percent)
         .put("auto_wakeup", chargeLimit.wakeUp)
 
@@ -82,6 +95,8 @@ class VehicleSettings(context: Context, val vehicleId: String) {
         o.num("tank_l")?.let { tankLitersManual = it }
         o.num("capacity_kwh")?.let { capacityKwhManual = it }
         Powertrain.of(o.str("powertrain"))?.let { powertrainManual = it }
+        o.str("maint_due_date")?.let { s -> runCatching { LocalDate.parse(s) }.getOrNull()?.let { maintenanceDueDate = it } }
+        o.num("maint_due_km")?.let { maintenanceDueMileage = it }
         if (o.has("charge_limit_pct")) {
             chargeLimit = ChargeLimitPrefs(
                 o.optBoolean("charge_limit_on", false),

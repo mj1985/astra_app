@@ -61,7 +61,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.json.JSONObject
+import com.astraconnect.app.data.MaintenanceInfo
 import java.time.Instant
+import java.time.LocalDate
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -126,6 +128,9 @@ data class UiState(
     val bottomBar: List<String>? = null,
     /** Ladelimit der App. */
     val chargeLimit: ChargeLimitPrefs = ChargeLimitPrefs(false, ChargeLimitPrefs.DEFAULT_PCT),
+    /** Selbst eingetragener Wartungstermin des Fahrzeugs (Vorrang vor der API). */
+    val maintDueDate: LocalDate? = null,
+    val maintDueMileage: Double? = null,
 ) {
     val vehicle: Vehicle? get() = vehicles.firstOrNull { it.id == selectedId } ?: vehicles.firstOrNull()
     val commandRunning: Boolean get() = commands.any { !it.final && Instant.now().epochSecond - it.sentAt.epochSecond < 180 }
@@ -135,6 +140,12 @@ data class UiState(
         get() = Garage.displayName(vehicle, profile.model)
     val capacityKwh: Double get() = profile.capacityKwh
     val tankLiters: Double get() = profile.tankLiters
+
+    /** Wartung aus API und eigenem Termin zusammengeführt (eigener Termin hat Vorrang). */
+    val maintenance: MaintenanceInfo
+        get() = MaintenanceInfo.resolve(
+            status?.maintenanceDays, status?.maintenanceKm, status?.mileageKm, maintDueDate, maintDueMileage,
+        )
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -303,6 +314,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             fuelEntries = costBook.fuel(),
             chargeEntries = costBook.charges(),
             chargeLimit = vs.chargeLimit,
+            maintDueDate = vs.maintenanceDueDate,
+            maintDueMileage = vs.maintenanceDueMileage,
             routeVersion = base.routeVersion + 1,
         )
         return withStatus.copy(profile = resolveProfile(withStatus.vehicle, withStatus.status))
@@ -545,6 +558,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setPowertrain(p: Powertrain?) {
         vehicleSettings.powertrainManual = p
         updateProfile()
+    }
+
+    /**
+     * Selbst eingetragener Wartungstermin des gewählten Fahrzeugs (hat Vorrang vor der API).
+     * [dueMileage] ist der absolute Kilometerstand bei Fälligkeit; je null = Teil nicht gesetzt.
+     */
+    fun setMaintenance(dueDate: LocalDate?, dueMileage: Double?) {
+        val vs = vehicleSettings
+        vs.maintenanceDueDate = dueDate
+        vs.maintenanceDueMileage = dueMileage?.takeIf { it > 0 }
+        ui = ui.copy(maintDueDate = vs.maintenanceDueDate, maintDueMileage = vs.maintenanceDueMileage)
     }
 
     private fun resolveProfile(vehicle: Vehicle? = ui.vehicle, status: VehicleStatus? = ui.status): VehicleProfile {

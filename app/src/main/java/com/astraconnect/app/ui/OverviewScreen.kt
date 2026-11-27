@@ -68,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.astraconnect.app.AppViewModel
+import com.astraconnect.app.data.MaintenanceInfo
 import com.astraconnect.app.data.VehicleStatus
 import com.astraconnect.app.ui.theme.Bad
 import com.astraconnect.app.ui.theme.Ok
@@ -246,7 +247,7 @@ fun OverviewScreen(vm: AppViewModel, onNavigate: (Dest) -> Unit) {
             // Kurzinfos mit Sprung
             item {
                 SectionCard("Wartung & Batterie", Icons.Filled.Build, Modifier.clickable { onNavigate(Dest.SERVICE) }) {
-                    InfoRow("Nächste Wartung", maintenanceShort(s))
+                    InfoRow("Nächste Wartung", maintenanceShort(ui.maintenance))
                     InfoRow("12V-Batterie", s.battery12V.pct(), battery12VColor(s.battery12V), Icons.Filled.BatteryStd)
                     NavHint("Details")
                 }
@@ -300,9 +301,9 @@ fun preconditioningLabel(s: String?) = when (s?.lowercase()) {
     else -> s
 }
 
-fun maintenanceShort(s: VehicleStatus): String = listOfNotNull(
-    s.maintenanceDays?.let { "in ${it.toInt()} Tagen" },
-    s.maintenanceKm?.let { "${it.km()}" },
+fun maintenanceShort(m: MaintenanceInfo): String = listOfNotNull(
+    m.daysLeft?.let { if (it < 0) "${(-it).toInt()} Tage überfällig" else "in ${it.toInt()} Tagen" },
+    m.kmLeft?.let { if (it < 0) "${(-it).km()} zu viel" else it.km() },
 ).joinToString(" / ").ifBlank { "keine Daten" }
 
 fun battery12VColor(v: Double?) = when {

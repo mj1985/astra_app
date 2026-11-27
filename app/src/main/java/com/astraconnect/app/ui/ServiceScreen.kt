@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryStd
@@ -23,7 +24,6 @@ import com.astraconnect.app.AppViewModel
 import com.astraconnect.app.ui.theme.Bad
 import com.astraconnect.app.ui.theme.Ok
 import com.astraconnect.app.ui.theme.Warn
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,27 +37,32 @@ fun ServiceScreen(vm: AppViewModel) {
                 return@LazyColumn
             }
             item {
+                val m = vm.ui.maintenance
                 SectionCard("Nächste Wartung", Icons.Filled.Build) {
+                    fun days(v: Double) = if (v < 0) "${(-v).toInt()} Tage überfällig" else "${v.toInt()} Tage"
                     Row(Modifier.fillMaxWidth()) {
-                        BigStat(s.maintenanceDays?.let { "${it.toInt()} Tage" } ?: "–", "bis zur Wartung", Modifier.weight(1f))
-                        BigStat(s.maintenanceKm.km(), "bis zur Wartung", Modifier.weight(1f))
+                        BigStat(m.daysLeft?.let { days(it) } ?: "–", "bis zur Wartung", Modifier.weight(1f))
+                        BigStat(m.kmLeft?.let { if (it < 0) "${(-it).km()} zu viel" else it.km() } ?: "–", "bis zur Wartung", Modifier.weight(1f))
                     }
-                    s.maintenanceDays?.let {
+                    val fmt = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+                    m.dueDate?.let {
                         Spacer(Modifier.height(10.dp))
-                        val due = LocalDate.now().plusDays(it.toLong())
-                        InfoRow("Fällig ca. am", due.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")))
+                        InfoRow(if (m.manual) "Fällig am" else "Fällig ca. am", it.format(fmt))
                     }
-                    s.maintenanceKm?.let { left ->
-                        s.mileageKm?.let { InfoRow("Fällig bei km-Stand ca.", (it + left).km()) }
-                    }
-                    val urgent = (s.maintenanceDays ?: Double.MAX_VALUE) < 30 || (s.maintenanceKm ?: Double.MAX_VALUE) < 1000
-                    if (urgent) InfoRow("Hinweis", "Wartung bald fällig", Warn)
-                    if (s.maintenanceDays == null && s.maintenanceKm == null) {
-                        Text(
-                            "Die API hat keine Wartungsdaten geliefert.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    m.dueMileage?.let { InfoRow(if (m.manual) "Fällig bei km-Stand" else "Fällig bei km-Stand ca.", it.km()) }
+                    val overdue = (m.daysLeft != null && m.daysLeft < 0) || (m.kmLeft != null && m.kmLeft < 0)
+                    if (overdue) InfoRow("Hinweis", "Wartung überfällig", Bad)
+                    else if (m.due) InfoRow("Hinweis", "Wartung bald fällig", Warn)
+                    Text(
+                        when {
+                            m.manual -> "Eigener Wartungstermin (in den Einstellungen unter „Fahrzeug“). Hat Vorrang vor dem Wert aus der API."
+                            m.hasData -> "Wert aus der Connected-Car-API. Bei manchen Modellen ist er ungenau – dann in den Einstellungen unter „Fahrzeug“ den Termin aus der MyOpel-App eintragen."
+                            else -> "Die API hat keine Wartungsdaten geliefert. In den Einstellungen unter „Fahrzeug“ lässt sich der Termin aus der MyOpel-App eintragen."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
                 }
             }
             item {

@@ -57,6 +57,8 @@ import com.astraconnect.app.data.ProfileSource
 import com.astraconnect.app.data.VehicleProfile
 import com.astraconnect.app.ui.theme.Warn
 import java.time.Instant
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 internal fun parseNum(s: String) = s.replace(',', '.').trim().toDoubleOrNull()
@@ -83,8 +85,13 @@ fun VehicleSettings(vm: AppViewModel) {
     val sizeSource = if (auto.model?.powertrain == pt) "laut Modellliste" else "Standardwert"
 
     // Bei mehreren Fahrzeugen klarstellen, für welches die Angaben gelten
-    SectionCard(if (ui.vehicles.size > 1) "Fahrzeug · ${ui.vehicleName}" else "Fahrzeug", Icons.Filled.DirectionsCar) {
-        InfoRow("Modell (laut VIN)", profile.model?.let { "Opel ${it.name}" } ?: "nicht in der Liste")
+    val modelLabel = profile.model?.let { "Opel ${it.name}" } ?: "nicht in der Liste"
+    ExpandableSectionCard(
+        title = if (ui.vehicles.size > 1) "Fahrzeug · ${ui.vehicleName}" else "Fahrzeug",
+        icon = Icons.Filled.DirectionsCar,
+        subtitle = "$modelLabel · ${pt.label}",
+    ) {
+        InfoRow("Modell (laut VIN)", modelLabel)
         InfoRow("Antrieb", pt.label)
         InfoRow("Quelle", profile.source.label)
         Spacer(Modifier.height(8.dp))
@@ -134,7 +141,65 @@ fun VehicleSettings(vm: AppViewModel) {
                 onReset = { vm.setTankLiters(null) },
             )
         }
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+        MaintenanceOverride(vm)
     }
+}
+
+/** Selbst eingetragener Wartungstermin – überschreibt den (bei manchen Modellen falschen) API-Wert. */
+@Composable
+private fun MaintenanceOverride(vm: AppViewModel) {
+    val ui = vm.ui
+    val m = ui.maintenance
+    val odo = ui.status?.mileageKm
+    val inFmt = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+
+    var date by remember(ui.maintDueDate) { mutableStateOf(ui.maintDueDate?.format(inFmt) ?: "") }
+    // Vorbelegung des Rest-km-Felds: aktueller Abstand bis zum eingetragenen Ziel-Kilometerstand.
+    // Schlüssel nur der gespeicherte Wert – ein Status-Abruf soll die Eingabe nicht zurücksetzen.
+    var remainKm by remember(ui.maintDueMileage) {
+        val remain = ui.maintDueMileage?.let { due -> odo?.let { (due - it).toInt() } }
+        mutableStateOf(remain?.toString() ?: "")
+    }
+
+    Text("Wartung", fontWeight = FontWeight.SemiBold)
+    Text(
+        "Opel liefert die Wartungsanzeige bei manchen Modellen falsch. Hier lässt sich der Termin aus der " +
+            "MyOpel-App eintragen; er hat Vorrang. Den Kilometer-Teil zählt die App mit dem Kilometerstand herunter.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(10.dp))
+    OutlinedTextField(
+        value = date, onValueChange = { date = it }, label = { Text("Fälligkeitsdatum TT.MM.JJJJ") },
+        singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(8.dp))
+    NumberField("Restkilometer laut MyOpel", remainKm, { remainKm = it }, Modifier.fillMaxWidth())
+    if (odo == null && remainKm.isNotBlank()) {
+        Text(
+            "Für den Kilometer-Teil fehlt der aktuelle Kilometerstand – bitte erst die Daten abrufen.",
+            style = MaterialTheme.typography.bodySmall, color = Warn,
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = {
+            val d = date.trim().takeIf { it.isNotBlank() }?.let { runCatching { LocalDate.parse(it, inFmt) }.getOrNull() }
+            val due = parseNum(remainKm)?.let { r -> odo?.let { it + r } }
+            vm.setMaintenance(d, due)
+        }) { Text("Speichern") }
+        if (m.manual) OutlinedButton(onClick = { vm.setMaintenance(null, null) }) { Text("Löschen") }
+    }
+    val current = when {
+        m.manual -> "Eigener Termin aktiv: " + listOfNotNull(
+            m.dueDate?.let { "fällig am ${it.format(inFmt)}" },
+            m.kmLeft?.let { if (it < 0) "${(-it).km()} überfällig" else "noch ${it.km()}" }
+                ?: m.dueMileage?.let { "bei ${it.km()}" },
+        ).joinToString(", ").ifBlank { "gesetzt" }
+        m.hasData -> "Aktuell aus der API: " + maintenanceShort(m)
+        else -> "Aktuell liefert die API keine Wartungsdaten."
+    }
+    Text(current, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
 }
 
 @Composable
